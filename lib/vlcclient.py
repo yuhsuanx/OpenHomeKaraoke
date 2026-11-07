@@ -144,6 +144,7 @@ class VLCClient:
 			if self.platform == 'osx' and not os.K.full_screen:
 				command.remove('--fullscreen')
 				command.remove('--macosx-nativefullscreenmode')
+				command.remove('--video-on-top')	# windowed: let other apps come to the front
 			logging.info("VLC Command: %s" % command)
 
 			self.process = subprocess.Popen(command, stdin = subprocess.PIPE)

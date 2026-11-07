@@ -1,4 +1,4 @@
-import os, sys, io, random, time, json, datetime
+import os, sys, io, random, time, json, datetime, re
 import logging, socket, subprocess, threading
 import multiprocessing as mp
 import shutil, psutil, traceback, tarfile, requests
@@ -42,6 +42,30 @@ def cleanse_modules(name):
 		pass
 
 
+def detect_black_bars(file_path):
+	"""Return VLC --crop borders 'L+T+R+B' that cut black bars recorded into a video, or '' if none.
+	Samples 3 points and keeps the area that is picture in any of them, so dark scenes never over-crop."""
+	if os.path.splitext(file_path)[1].lower() not in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
+		return ''
+	W, H = map(int, check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+	                              '-of', 'csv=p=0', file_path]).decode().strip().split(',')[:2])
+	boxes = []
+	for ss in (30, 60, 90):
+		err = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-ss', str(ss), '-i', file_path, '-frames:v', '10',
+		                      '-vf', 'cropdetect=24:2:0', '-f', 'null', '-'], capture_output=True, timeout=20).stderr.decode(errors='ignore')
+		found = re.findall(r'crop=(\d+):(\d+):(\d+):(\d+)', err)
+		if found:
+			w, h, x, y = map(int, found[-1])
+			boxes.append((x, y, x + w, y + h))
+	if not boxes:
+		return ''
+	x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+	x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+	if (x1 - x0) >= W * 0.97 and (y1 - y0) >= H * 0.97:	# bars too thin to bother
+		return ''
+	return f'{x0}+{y0}+{W - x1}+{H - y1}'	# VLC border form left+top+right+bottom ('WxH+X+Y' is misread by VLC 3)
+
+
 class Karaoke:
 	ref_W, ref_H = 1920, 1080      # reference screen size, control drawing scale
 
@@ -55,6 +79,7 @@ class Karaoke:
 	now_playing_user = None
 	now_playing_transpose = 0
 	now_playing_slave = ''
+	loaded_slaves = []	# vocal/nonvocal tracks loaded into the current VLC, in --input-slave order
 	audio_delay = 0
 	has_video = True
 	has_subtitle = False
@@ -65,6 +90,8 @@ class Karaoke:
 	last_vocal_time = 0
 	use_DNN_vocal = True
 	vocal_process = None
+	crops = None		# basename -> VLC crop geometry, see get_crop()
+	crop_lock = threading.Lock()
 	vocal_device = None
 	vocal_mode = 'mixed'
 	is_paused = True
@@ -291,7 +318,8 @@ class Karaoke:
 			if self.full_screen:
 				self.screen = pygame.display.set_mode([self.WIDTH, self.HEIGHT], self.get_default_display_mode())
 			else:
-				self.screen = pygame.display.set_mode([self.WIDTH*3//4, self.HEIGHT*3//4], pygame.RESIZABLE)
+				self.screen = pygame.display.set_mode([self.WIDTH//2, self.HEIGHT//2], pygame.RESIZABLE)
+			pygame.mouse.set_visible(not self.full_screen)	# hide the cursor only on the fullscreen TV view
 			if self.is_file_playing():
 				self.play_transposed(self.now_playing_transpose)
 			else:
@@ -506,7 +534,10 @@ class Karaoke:
 			self.downloading_songs[song_url] = 0
 			bn = self.get_downloaded_file_basename(song_url)
 			if bn:
-				shutil.move(self.download_path+'tmp/'+bn, self.download_path+bn)
+				stem, sep, rest = bn.rpartition('---')	# '<YouTube title>---<id>.<ext>'
+				new_bn = Try(lambda: normalize_song_name(stem), stem) + sep + rest if sep else bn
+				shutil.move(self.download_path+'tmp/'+bn, self.download_path+new_bn)
+				bn = new_bn
 				self.get_available_songs()
 				if enqueue:
 					self.enqueue(self.download_path+bn, song_added_by)
@@ -616,6 +647,18 @@ class Karaoke:
 		elif self.omxclient != None:
 				self.omxclient.kill()
 
+	def get_crop(self, file_path):
+		"""VLC crop geometry for black bars recorded into the video ('' if none), cached in <download_path>/.crop.json."""
+		key = os.path.basename(file_path)
+		with self.crop_lock:
+			if self.crops is None:
+				self.crops = Try(lambda: json.load(open(self.download_path + '.crop.json')), {})
+			if key not in self.crops:
+				self.crops[key] = detect_black_bars(file_path)
+				with open(self.download_path + '.crop.json', 'w') as fp:
+					json.dump(self.crops, fp, ensure_ascii=False)
+			return self.crops[key]
+
 	def play_file(self, file_path, extra_params = []):
 		self.switchingSong = True
 		if self.use_vlc:
@@ -630,8 +673,11 @@ class Karaoke:
 				extra_params1 += ['--drawable-hwnd' if self.platform == 'windows' else '--drawable-xid',
 				                  hex(pygame.display.get_wm_info()['window'])]
 			self.now_playing_slave = self.try_set_vocal_mode(self.vocal_mode, file_path)
-			if os.path.isfile(self.now_playing_slave):
-				extra_params1 += [f'--input-slave={self.now_playing_slave}', '--audio-track=1']
+			# load both split tracks so play_vocal() can switch between them without restarting VLC
+			self.loaded_slaves = [s for s in (self.slave_path(m, file_path) for m in ('nonvocal', 'vocal')) if os.path.isfile(s)]
+			if self.loaded_slaves:
+				track = self.loaded_slaves.index(self.now_playing_slave) + 1 if self.now_playing_slave in self.loaded_slaves else 0
+				extra_params1 += ['--input-slave=' + '#'.join(self.loaded_slaves), f'--audio-track={track}']
 			if self.audio_delay:
 				extra_params1 += [f'--audio-desync={self.audio_delay * 1000}']
 			if self.subtitle_delay:
@@ -640,6 +686,9 @@ class Karaoke:
 				extra_params1 += [f'--sub-track=0']
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
+			crop = Try(lambda: self.get_crop(file_path), '')
+			if crop:
+				extra_params1 += [f'--crop={crop}']
 			self.now_playing = self.filename_from_path(file_path)
 			self.now_playing_filename = file_path
 			self.is_paused = ('--start-paused' in extra_params1)
@@ -949,8 +998,7 @@ class Karaoke:
 	def try_set_vocal_mode(self, mode, now_playing_filename):
 		if mode not in ['mixed', 'vocal', 'nonvocal']:
 			mode = {1: 'nonvocal', 2: 'mixed', 3: 'vocal'}[self.get_vocal_mode()]
-		play_slave = '' if mode == 'mixed' else self.download_path + mode + '/' + ('' if self.use_DNN_vocal else '.') \
-		                                       + os.path.basename(now_playing_filename) + '.m4a'
+		play_slave = '' if mode == 'mixed' else self.slave_path(mode, now_playing_filename)
 		if os.path.isfile(play_slave):
 			self.vocal_mode = mode
 		else:
@@ -958,11 +1006,27 @@ class Karaoke:
 			self.vocal_mode = 'mixed'
 		return play_slave
 
+	def slave_path(self, mode, filename):
+		return self.download_path + mode + '/' + ('' if self.use_DNN_vocal else '.') + os.path.basename(filename) + '.m4a'
+
+	def switch_audio_track(self, slave):
+		"""Switch live to an already-loaded track ('' = the video's own audio). Returns False if it can't."""
+		info = self.vlcclient.get_stream_info(self.vlcclient.command().text)
+		ids = sorted(int(k.split()[-1]) for k, v in info.items() if k.startswith('Stream ') and v.get('Type') == 'Audio')
+		if len(ids) < len(self.loaded_slaves) + 1:
+			return False
+		i = 0 if slave == '' else len(ids) - len(self.loaded_slaves) + self.loaded_slaves.index(slave)
+		return self.vlcclient.command(f'audio_track&val={ids[i]}').status_code == 200
+
 	def play_vocal(self, mode = None, force = False):
 		# mode=vocal/nonvocal/mixed, or else (use current)
 		if self.use_vlc:
 			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
 			if not force and self.now_playing_slave == play_slave:
+				return
+			if not force and (play_slave == '' or play_slave in self.loaded_slaves) and self.switch_audio_track(play_slave):
+				self.now_playing_slave = play_slave
+				self.get_vocal_info(True)
 				return
 			status_xml = self.vlcclient.command().text if self.is_paused else self.vlcclient.pause(False).text
 			info = self.vlcclient.get_info_xml(status_xml)
@@ -1065,6 +1129,7 @@ class Karaoke:
 		self.is_paused = True
 		self.now_playing_transpose = 0
 		self.now_playing_slave = ''
+		self.loaded_slaves = []
 		self.audio_delay = 0
 		self.subtitle_delay = 0
 		self.show_subtitle = True
@@ -1183,6 +1248,9 @@ class Karaoke:
 					if not self.is_file_playing():
 						self.reset_now_playing()
 						self.render_splash_screen()
+						# detect black bars while the splash screen waits, so play_file() finds it cached
+						next_file = self.queue[0]['file']
+						threading.Thread(target=lambda: Try(lambda: self.get_crop(next_file)), daemon=True).start()
 						tm = time.time()
 						while time.time()-tm < self.splash_delay:
 							self.handle_run_loop()

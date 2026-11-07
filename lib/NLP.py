@@ -1,12 +1,36 @@
 import os, sys, io, string, json, subprocess, yt_dlp, gzip
-import pykakasi, pinyin, logging, requests, shutil, hashlib
+import pykakasi, pinyin, logging, requests, shutil, hashlib, re
 from unidecode import unidecode
 from urllib.parse import unquote
+from opencc import OpenCC
 
 from lib.ChineseNumber import *
 from lib.settings import *
 
 KKS = pykakasi.kakasi()
+S2T = OpenCC('s2tw')
+TITLE_NOISE = re.compile(r'純音樂|伴唱|伴奏|卡拉\s*OK|karaoke|KTV|官方|動態歌詞|歌詞版|歌詞|Official|Music Video|Lyrics?|MV|HD|4K|1080p', re.I)
+HAS_CJK = re.compile(r'[㐀-鿿]')
+
+def normalize_song_name(title):
+	"""Turn a YouTube title into '歌手 - 歌名', e.g. '純音樂 周杰倫 Jay Chou ─《楓》Wild West KTV 伴奏' -> '周杰倫 - 楓'.
+	Returns the title unchanged if no singer/song split is found."""
+	def clean(s):
+		s = TITLE_NOISE.sub(' ', s)
+		s = re.sub(r'[【\[(（][^】\])）]*[】\])）]', ' ', s)	# drop bracketed extras like (歌詞版) 【HD】
+		words = s.split()
+		if HAS_CJK.search(s):	# '周杰倫 Jay Chou' -> '周杰倫'
+			words = [w for w in words if HAS_CJK.search(w)]
+		return ' '.join(words).strip(' -─—–|｜:：')
+	m = re.search(r'[《「『](.+?)[》」』]', title)
+	if m:
+		artist, song = title[:m.start()], m.group(1)
+	elif ' - ' in title:
+		artist, song = title.split(' - ', 1)
+	else:
+		return title
+	artist, song = clean(artist), clean(song)
+	return S2T.convert(f'{artist} - {song}') if artist and song else title
 filelist, cookies_opt = [], []
 downloading_songs = {}
 to_pinyin = lambda t: pinyin.get(t, format='numerical')

@@ -26,3 +26,4 @@ librosa>=0.10.2
 soundfile
 spec_utils
 pip
+opencc-python-reimplemented
