@@ -9,7 +9,7 @@ import numpy as np
 
 from constants import media_types
 
-import pygame
+import pygame, pygame.freetype
 import qrcode
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -187,6 +187,7 @@ class Karaoke:
 		self.generate_qr_code()
 		if self.use_mpv:	# MPVClient duck-types VLCClient for the calls both players share (stop/seek/pause/state...)
 			self.vlcclient = mpvclient.MPVClient(path = self.mpv_path)
+			self.vlcclient.start(fullscreen = not args.windowed)	# one mpv window for the session; it also shows the splash
 		elif self.use_vlc:
 			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
 			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
@@ -300,6 +301,12 @@ class Karaoke:
 			return pygame.FULLSCREEN
 
 	def initialize_screen(self, fullscreen=True):
+		if self.use_mpv:	# no pygame window: the splash is drawn off-screen and shown inside mpv, see render_splash_mpv()
+			pygame.freetype.init()
+			self.fonts = {}
+			self.full_screen = fullscreen
+			self.screen = pygame.Surface((960, 540))
+			return
 		if not self.hide_splash_screen:
 			logging.debug("Initializing pygame")
 			pygame.init()
@@ -777,7 +784,7 @@ class Karaoke:
 		self.render_splash_screen()  # remove old previous track
 
 	def play_file_mpv(self, file_path):
-		"""Start mpv with the vocal/nonvocal tracks and lyrics loaded, so play_vocal()/toggle_subtitle() switch live."""
+		"""Load the song into the mpv window with its vocal/nonvocal tracks and lyrics, so play_vocal()/toggle_subtitle() switch live."""
 		if self.save_delays:
 			saved_delays = self.delays.get(os.path.basename(file_path), {})
 			self.audio_delay = self.audio_delay if self.audio_delay else saved_delays.get('audio_delay', 0)
@@ -786,24 +793,19 @@ class Karaoke:
 		logging.info("Playing video in mpv: " + file_path)
 		self.now_playing_slave = self.try_set_vocal_mode(self.vocal_mode, file_path)
 		self.loaded_slaves = [s for s in (self.slave_path(m, file_path) for m in ('nonvocal', 'vocal')) if os.path.isfile(s)]
-		params = [f'--audio-file={s}' for s in self.loaded_slaves]
+		# per-file options: mpv restores them when the song ends, so nothing leaks into the next song
 		lyrics_file = self.lyrics_path(file_path)
-		if os.path.isfile(lyrics_file):
-			params += [f'--sub-file={lyrics_file}']
-		params += [f'--sub-visibility={"yes" if self.show_subtitle else "no"}', f'--audio-delay={self.audio_delay}',
-		           f'--sub-delay={self.subtitle_delay}', f'--speed={self.play_speed}']
-		if mpvclient.pitch_filter(self.now_playing_transpose):
-			params += [f'--af={mpvclient.pitch_filter(self.now_playing_transpose)}']
-		crop = Try(lambda: mpv_crop(file_path, self.get_crop(file_path)), '')
-		if crop:
-			params += [f'--video-crop={crop}']
+		options = [('sub-files-append', lyrics_file)] if os.path.isfile(lyrics_file) else []
+		options += [('sub-visibility', 'yes' if self.show_subtitle else 'no'), ('audio-delay', self.audio_delay),
+		            ('sub-delay', self.subtitle_delay), ('speed', self.play_speed),
+		            ('af', mpvclient.pitch_filter(self.now_playing_transpose)),
+		            ('video-crop', Try(lambda: mpv_crop(file_path, self.get_crop(file_path)), ''))]
 		self.now_playing = self.filename_from_path(file_path)
 		self.now_playing_filename = file_path
 		self.is_paused = False
 		if self.normalize_vol and self.logical_volume is not None:
 			self.volume = self.logical_volume / np.sqrt(self.get_mp3_volume(file_path))
-		info = self.vlcclient.play_file(file_path, self.volume, params, self.now_playing_slave,
-		                                fullscreen = getattr(self, 'full_screen', not self.windowed)) or {}
+		info = self.vlcclient.play_file(file_path, self.volume, options, self.loaded_slaves, self.now_playing_slave) or {}
 		self.has_subtitle = info.get('has_subtitle', False) or os.path.isfile(lyrics_file)	# keep the toggle visible when lyrics are hidden
 		self.has_video = info.get('has_video', True)
 		if info.get('volume') is not None:
@@ -813,11 +815,10 @@ class Karaoke:
 			self.logical_volume = self.volume * np.sqrt(self.media_vol)
 
 	def play_transposed(self, semitones):
-		if self.use_mpv:	# live: also called by toggle_full_screen()
+		if self.use_mpv:	# live
 			if mpvclient.pitch_filter(semitones) != mpvclient.pitch_filter(self.now_playing_transpose):
 				self.vlcclient.set_transpose(semitones)	# re-creating the filter would glitch the audio
 			self.now_playing_transpose = semitones
-			self.vlcclient.set_fullscreen(getattr(self, 'full_screen', not self.windowed))
 			self.status_dirty = True
 		elif self.use_vlc:
 			self.now_playing_transpose = semitones
@@ -1210,7 +1211,28 @@ class Karaoke:
 	def stop(self):
 		self.running = False
 
+	def render_splash_mpv(self):
+		"""Draw the splash at the mpv window's aspect (at most 1920 wide) and show it as an overlay."""
+		ow, oh = self.vlcclient.osd_size()
+		if not ow or not oh:
+			return
+		w, h = min(ow, 1920), round(oh * min(ow, 1920) / ow)
+		if self.screen.get_size() != (w, h):
+			self.screen = pygame.Surface((w, h))
+		self.render_splash_screen()
+		self.vlcclient.show_overlay(pygame.image.tobytes(self.screen, 'BGRA'), w, h, ow, oh)
+
 	def handle_run_loop(self):
+		if self.use_mpv:
+			if not self.vlcclient.alive():
+				logging.warning("mpv window closed: Exiting pikaraoke...")
+				self.running = False
+			elif self.hide_splash_screen or (self.is_file_playing() and self.has_video):
+				self.vlcclient.hide_overlay()
+			else:
+				self.render_splash_mpv()
+			time.sleep(0.1)
+			return
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				logging.warn("Window closed: Exiting pikaraoke...")

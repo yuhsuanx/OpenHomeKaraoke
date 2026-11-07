@@ -1,5 +1,7 @@
 """mpv player control over its JSON IPC socket (--input-ipc-server).
 
+One mpv window for the whole session: songs are loaded with `loadfile` (per-file options, reset when the
+song ends) and between songs mpv idles while the app's splash screen is shown as an OSD overlay.
 Duck-types the VLCClient calls karaoke.py shares between players (stop/seek/pause/play/restart/kill/
 is_running/is_playing/get_info_xml/is_transposing), plus live setters VLC can't do without a restart:
 audio track (select_audio), subtitle visibility, delays, speed, transpose and fullscreen.
@@ -28,7 +30,8 @@ class MPVClient:
 		self.cmd_base = [
 			self.path,
 			f'--input-ipc-server={self.sock_path}',
-			'--pause',	# play_file() selects the audio track, then unpauses, so the wrong track never sounds
+			'--idle=yes', '--force-window=yes',	# stay open between songs (the splash overlay is drawn on the idle window)
+			'--auto-window-resize=no', '--geometry=50%x50%',	# window size doesn't follow each video's size
 			'--no-input-default-bindings', '--osc=no', '--osd-level=0',	# like VLC --no-keyboard-events/--no-mouse-events
 			'--sub-auto=no', '--audio-file-auto=no',
 			'--volume-max=200',	# VLC's web UI volume goes up to 512 = 200%
@@ -36,6 +39,8 @@ class MPVClient:
 			'--title=pikaraoke',
 			'--quiet',	# no status line spam in the app's console
 		]
+		self.splash_path = f'/tmp/pikaraoke-mpv-{os.getpid()}-splash.bgra'
+		self.overlay_key = None	# what the splash overlay currently shows, None if hidden
 		self.process = None
 		self.is_transposing = False	# True while (re)starting, so get_state() returns the cached state
 		self.lock = threading.Lock()
@@ -79,38 +84,98 @@ class MPVClient:
 	def command(self, *args):
 		return self._request(args)[0]
 
+	# ---- window ----
+	def start(self, fullscreen=True):
+		"""Open the mpv window (idle, black until the splash overlay or a song is shown)."""
+		if os.path.exists(self.sock_path):
+			os.remove(self.sock_path)
+		command = self.cmd_base + (['--fs', '--ontop'] if fullscreen else [])
+		logging.info(f'mpv command: {command}')
+		self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
+		t0 = time.time()
+		while self.alive() and self.command('get_property', 'pid') is None and time.time() - t0 < 10:
+			time.sleep(0.05)
+		# default key bindings are off (like VLC); F and ESC act like they did in the pygame splash window:
+		# F toggles fullscreen, ESC (or closing the window) quits the app
+		for key, cmd in [('f', 'cycle fullscreen'), ('MBTN_LEFT_DBL', 'cycle fullscreen'), ('ESC', 'quit')]:
+			self.command('keybind', key, cmd)
+
+	def alive(self):
+		"""mpv process (the window) is open."""
+		return self.process is not None and self.process.poll() is None
+
+	def show_overlay(self, bgra, w, h, dw, dh):
+		"""Show a w x h BGRA image (opaque) scaled to dw x dh over the whole window; no-op if unchanged."""
+		key = (hash(bgra), w, h, dw, dh)
+		if key == self.overlay_key:
+			return
+		with open(self.splash_path, 'wb') as fp:	# mpv >= 0.42 reads the file before the command returns
+			fp.write(bgra)
+		r = self.command('overlay-add', 0, 0, 0, self.splash_path, 0, 'bgra', w, h, w * 4, dw, dh)
+		self.overlay_key = key if r and r.get('error') == 'success' else None
+
+	def hide_overlay(self):
+		if self.overlay_key is not None:
+			self.command('overlay-remove', 0)
+			self.overlay_key = None
+
+	def osd_size(self):
+		return self.get('osd-width', 'osd-height')
+
 	# ---- playback ----
-	def play_file(self, file_path, volume, params=[], audio_file='', start_paused=False, fullscreen=True):
-		"""Start mpv on file_path with audio_file ('' = the video's own audio) selected.
-		Returns {'has_video', 'has_subtitle', 'volume'}, or None if mpv failed to start."""
+	def _loadfile(self, file_path, options, timeout=15):
+		"""loadfile with per-file options; wait until the first frame is ready. Returns True on success."""
+		opts = ','.join(f'{k}=%{len(str(v).encode())}%{v}' for k, v in options)	# %len% quoting: paths may hold , or =
+		try:
+			with socket.socket(socket.AF_UNIX) as s:
+				s.settimeout(timeout)
+				s.connect(self.sock_path)
+				s.sendall(json.dumps({'command': ['loadfile', file_path, 'replace', -1, opts], 'request_id': 0}).encode() + b'\n')
+				buf, t0 = b'', time.time()
+				while time.time() - t0 < timeout:
+					data = s.recv(65536)
+					if not data:
+						return False
+					buf += data
+					*lines, buf = buf.split(b'\n')
+					for msg in map(json.loads, lines):
+						if msg.get('request_id') == 0 and msg.get('error') != 'success':
+							logging.error(f'mpv loadfile failed: {msg}')
+							return False
+						if msg.get('event') == 'playback-restart':
+							return True
+						if msg.get('event') == 'end-file' and msg.get('reason') == 'error':
+							logging.error(f'mpv could not play {file_path}: {msg}')
+							return False
+		except (OSError, ValueError) as e:
+			logging.error(f'mpv loadfile failed: {e}')
+		return False
+
+	def play_file(self, file_path, volume, options=[], audio_files=[], audio_file='', start_paused=False):
+		"""Load file_path into the open mpv window, add the external audio_files, and select audio_file
+		('' = the video's own audio). options: (name, value) mpv options for this file only, e.g.
+		('sub-files-append', path); mpv restores them when the file ends.
+		Returns {'has_video', 'has_subtitle', 'volume'}, or None if it failed."""
 		with self.lock:
 			self.is_transposing = True
 			try:
-				self.kill()
-				if os.path.exists(self.sock_path):
-					os.remove(self.sock_path)
-				command = self.cmd_base + (['--fs', '--ontop'] if fullscreen else []) + params
+				self.set_property('pause', True)	# select the audio track first, so the wrong track never sounds
 				if volume:
-					command += [f'--volume={float(volume) * 100 / VLC_100:.1f}']
-				command += ['--', file_path]
-				logging.info(f'mpv command: {command}')
-				self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
-
-				# wait until the file is loaded (its tracks are known)
-				tracks, t0 = None, time.time()
-				while self.process.poll() is None and time.time() - t0 < 15:
-					tracks = self.get('track-list')[0]
-					if tracks:
-						break
-					time.sleep(0.05)
-				if not tracks:
-					logging.error(f'mpv did not load {file_path}')
+					self.vol_set(volume)
+				logging.info(f'mpv loadfile {file_path} {options}')
+				if not self._loadfile(file_path, options):
 					return None
+				for f in audio_files:	# loadfile keeps only the last of repeated audio-files-append options
+					self.command('audio-add', f, 'auto')
+				tracks = self.get('track-list')[0] or []
 				self.select_audio(audio_file, tracks)
+				has_video = any(t['type'] == 'video' and not t.get('albumart') for t in tracks)
+				if has_video:
+					self.hide_overlay()	# the paused first frame is ready, so no black gap
 				if not start_paused:
 					self.set_property('pause', False)
 				return {
-					'has_video': any(t['type'] == 'video' and not t.get('albumart') for t in tracks),
+					'has_video': has_video,
 					'has_subtitle': any(t['type'] == 'sub' for t in tracks),
 					'volume': self.get_volume(),
 				}
@@ -135,7 +200,8 @@ class MPVClient:
 			return self.set_property('aid', match[0]['id'])
 
 	def stop(self):
-		return self.command('quit')
+		"""End the song; mpv stays open (idle) for the splash."""
+		return self.command('stop')
 
 	def pause(self, save_status=True):
 		return self.set_property('pause', True)
@@ -195,7 +261,8 @@ class MPVClient:
 		}
 
 	def is_running(self):
-		return (self.process is not None and self.process.poll() is None) or self.is_transposing
+		"""A song is loaded (what Karaoke.is_file_playing() means); False while idle between songs."""
+		return self.is_transposing or (self.alive() and self.get('idle-active')[0] is False)
 
 	def is_playing(self):
 		return self.is_running() and self.get('pause')[0] is False
@@ -204,9 +271,13 @@ class MPVClient:
 		return self.is_running() and self.get('pause')[0] is True
 
 	def kill(self):
-		if self.process is not None and self.process.poll() is None:
+		"""Close the mpv window."""
+		if self.alive():
 			self.command('quit')
 			try:
 				self.process.wait(2)
 			except subprocess.TimeoutExpired:
 				self.process.kill()
+		for f in (self.sock_path, self.splash_path):
+			if os.path.exists(f):
+				os.remove(f)
