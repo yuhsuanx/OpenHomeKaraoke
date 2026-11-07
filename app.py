@@ -1068,8 +1068,8 @@ if __name__ == "__main__":
 	)
 	parser.add_argument(
 		"-L", "--lang",
-		help = f"Set display language (default: None, set according to the current system locale {locale.getdefaultlocale()[0]})",
-		default = locale.getdefaultlocale()[0],
+		help = "Set display language (default: zh_TW)",
+		default = 'zh_TW',
 	)
 	parser.add_argument(
 		"-l", "--log-level",
