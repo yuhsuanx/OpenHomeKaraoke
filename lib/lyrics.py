@@ -32,6 +32,28 @@ def lyric_lines(rec, artist, track):
 			lines.append(ln)
 	return lines
 
+FONT_SIZE, MARGIN = 112, 80	# lyric font size and left/right margin, in the 1920x1080 script's pixels
+HEADER = f'''[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Up,PingFang TC,{FONT_SIZE},&H00FF9F1E,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,5,0,7,{MARGIN},{MARGIN},60,1
+Style: Down,PingFang TC,{FONT_SIZE},&H00FF9F1E,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,5,0,9,{MARGIN},{MARGIN},{60 + round(FONT_SIZE * 1.35)},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+'''
+
+def fit(text):
+	"""'{\\fs..}' that shrinks a line too long for one row (a wrapped line would run into the other row), else ''."""
+	plain = re.sub(r'\{[^}]*\}', '', text)
+	width = sum(1 if ord(c) > 0x2e80 else 0.55 for c in plain) * (FONT_SIZE + 2)
+	room = 1920 - 2 * MARGIN
+	return '' if width <= room else '{\\fs%d}' % (FONT_SIZE * room // width)
+
 def ts(t):
 	t = max(0, t)
 	return f'{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}'
@@ -75,21 +97,9 @@ def write_ass(lines, words, path):
 				word = ' ' + word
 			text += '{\\kf%d}%s' % (max(1, round((w.end - w.start) * 100)), word)
 			t = max(t, w.end)
-		events.append(f'Dialogue: 0,{ts(show)},{ts(hide)},{"Up" if i % 2 == 0 else "Down"},,0,0,0,,{text}')
+		events.append(f'Dialogue: 0,{ts(show)},{ts(hide)},{"Up" if i % 2 == 0 else "Down"},,0,0,0,,{fit(text)}{text}')
 	with open(path, 'w') as fp:
-		fp.write('''[Script Info]
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Up,PingFang TC,80,&H00FF9F1E,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,4,0,1,160,160,170,1
-Style: Down,PingFang TC,80,&H00FF9F1E,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,4,0,3,160,160,60,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-''' + '\n'.join(events) + '\n')
+		fp.write(HEADER + '\n'.join(events) + '\n')
 
 def make_lyrics(video, audio, out_path):
 	"""Write KTV lyrics for `video` (named '<artist> - <title>---<id>.<ext>') to out_path, timed on `audio`

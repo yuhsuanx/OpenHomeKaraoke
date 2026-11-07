@@ -4,8 +4,10 @@
 		<span class="section-label">{{getString1(74)}}</span>
 		<span id="np-eq" class="eq control-box" hidden><i></i><i></i><i></i></span>
 	</div>
-	<h1 id="now-playing" class="np-title"></h1>
-	<div class="singer control-box" hidden><i class="bi bi-person-fill"></i> <span id="now-playing-user"></span></div>
+	<div class="np-head">
+		<h1 id="now-playing" class="np-title"></h1>
+		<span class="np-user control-box" hidden><i class="bi bi-person-fill"></i> <span id="now-playing-user"></span></span>
+	</div>
 
 	<div class="control-box mt-3" hidden>
 		<input id="seektrack" type="range" class="form-range" min="0" max="{{ seektrack_max }}" value="{{ seektrack_value }}"
@@ -13,26 +15,17 @@
 			ontouchstart="seektrack_seeking=true" ontouchend="seektrack_seeking=false">
 		<div class="d-flex justify-content-between time"><span id="seektrack-val">0:00</span><span id="seektrack-max">0:00</span></div>
 
-		<div class="transport my-3">
-			<button id="restart" class="btn btn-soft btn-round" title="{{getString1(79)}}"><i class="bi bi-skip-start-fill"></i></button>
-			<button id="pause-btn" class="btn btn-grad btn-round play" title="{{getString1(80)}}"><i id="pause-resume" class="bi bi-pause-fill"></i></button>
-			<button id="skip" class="btn btn-soft btn-round" title="{{getString1(81)}}"><i class="bi bi-skip-end-fill"></i></button>
+		<div class="vol-row mt-2" title="{{getString1(83)}}">
+			<i class="bi bi-volume-up-fill vol-icon"></i>
+			<input id="vol" type="range" class="form-range" min="0" max="512" step="8" value="{{ volume }}"
+				onmousedown="volume_changing=true" ontouchstart="volume_changing=true">
+			<span id="vol-pct" class="vol-pct"></span>
 		</div>
 
-		<div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-			<div class="stepper" title="{{getString1(83)}}">
-				<button id="vol-down" class="btn btn-soft btn-round" title="{{getString1(82)}}"><i class="bi bi-volume-down-fill"></i></button>
-				<input id="vol" type="number" inputmode="numeric" value="{{ volume }}" onfocus="volume_changing=true">
-				<button id="vol-up" class="btn btn-soft btn-round" title="{{getString1(84)}}"><i class="bi bi-volume-up-fill"></i></button>
-			</div>
-			<div class="d-flex align-items-center gap-2">
-				<button id="pytorch-logo" class="btn btn-sm btn-soft rounded-pill" hidden title="DNN"><i class="bi bi-cpu"></i> DNN</button>
-				<div class="btn-group seg" role="group">
-					<button id="s3t1" class="btn btn-sm btn-soft">{{getString1(65)}}</button>
-					<button id="s3t2" class="btn btn-sm btn-soft">{{getString1(66)}}</button>
-					<button id="s3t3" class="btn btn-sm btn-soft">{{getString1(67)}}</button>
-				</div>
-			</div>
+		<div class="ctl-buttons mt-3">
+			<button id="pause-btn" class="btn btn-soft pill" title="{{getString1(80)}}"><i id="pause-resume" class="bi bi-pause-fill"></i> <span id="pause-label">暫停</span></button>
+			<button id="skip" class="btn btn-soft pill" title="{{getString1(81)}}"><i class="bi bi-skip-end-fill"></i> 切歌</button>
+			<button id="guide" class="btn btn-soft pill" role="switch"><i class="bi bi-mic-fill"></i> 導唱 <span id="guide-state"></span></button>
 		</div>
 	</div>
 </section>
@@ -109,6 +102,7 @@ function getHHMMSS(value) {
 }
 function setPaused(paused){
 	$("#pause-resume").toggleClass("bi-play-fill", paused).toggleClass("bi-pause-fill", !paused);
+	$("#pause-label").text(paused ? '繼續' : '暫停');
 	$("#np-eq").toggleClass("paused", paused);
 }
 function update(data){
@@ -155,11 +149,9 @@ function update(data){
 		}
 
 		var use_DNN = obj.vocal_info&0x40;
-		s3_enable(1, use_DNN?(obj.vocal_info&1):(obj.vocal_info&4));
-		s3_enable(3, use_DNN?(obj.vocal_info&2):(obj.vocal_info&8));
-		s3_go_to((obj.vocal_info>>4)&3, false);
-		$("#pytorch-logo").prop('hidden', !use_DNN);
-		$("#vol").toggleClass('vol-norm', !!obj.vol_norm);
+		has_instrumental = !!(use_DNN?(obj.vocal_info&1):(obj.vocal_info&4));
+		guide_show((obj.vocal_info>>4)&3);
+		$("#vol-pct").toggleClass('vol-norm', !!obj.vol_norm);
 	} else {
 		$("#now-playing").addClass('np-empty').text("{{getString1(69)}}");
 		$(".control-box").prop('hidden', true);
@@ -175,7 +167,13 @@ function update(data){
 	setPaused(obj.is_paused);
 
 	if("volume" in obj && !volume_changing)
-		$("#vol").val(obj.volume);
+		showVol(obj.volume);
+}
+// volume is on VLC's scale: 256 = 100%, 512 = 200%
+function showVol(v) {
+	if (v === null || isNaN(v = +v)) return;	// no volume yet, or /vol_* answered False because nothing is playing
+	$("#vol").val(v).css('--fill', v / 5.12 + '%');
+	$("#vol-pct").text(Math.round(v / 2.56) + '%');
 }
 function getNowPlaying() { $.get('/nowplaying').done(update); }
 
@@ -184,15 +182,18 @@ function checkUser() {
 	catch(err){ return false; }
 }
 
-// Vocal mode: 1 = music only, 2 = mixed, 3 = voice only
-function s3_go_to(n, do_action) {
-	if(n<1 || n>3) n=2;
-	for(var i=1; i<=3; i++) $("#s3t"+i).toggleClass('active', i==n);
-	if(do_action)
-		$.get("/play_vocal/"+(n==2?'mixed':(n==1?'nonvocal':'vocal')));
+// 導唱 (guide vocal): on = original mix, off = instrumental. Vocal mode: 1 = music only, 2 = mixed, 3 = voice only
+var has_instrumental = false;
+function guide_show(mode) {
+	var on = mode != 1;
+	$("#guide").toggleClass('on', on).attr('aria-checked', on).prop('disabled', on && !has_instrumental);	// can't turn off without an instrumental track
+	$("#guide-state").text(on ? '開' : '關');
 }
-function s3_enable(n, val) { $("#s3t"+n).prop('disabled', val==0); }
-for(let i=1; i<=3; i++) $("#s3t"+i).click(()=>s3_go_to(i, true));
+$("#guide").click(function(){
+	var on = !$(this).hasClass('on');
+	guide_show(on ? 2 : 1);
+	$.get("/play_vocal/" + (on ? 'mixed' : 'nonvocal'));
+});
 
 // Sliders
 $("#transpose").on('input', function(){ $("#semitones-label").text(getSemitonesLabel(this.value)); })
@@ -204,14 +205,12 @@ $("#playspeed").on('input', function(){ $("#playspeed-val").val((this.value/100)
 
 // Transport
 $("#pause-btn").click(() => { $.get("/pause", (is_paused) => setPaused(is_paused=='true')); });
-$("#restart").click(() => { if (checkUser() || confirm("{{getString1(71)}}")) $.get("/restart"); });
 $("#skip").click(() => { if (checkUser() || confirm("{{getString1(72)}}")) $.get("/skip"); });
 
 // Volume
-$("#vol-up").click(() => { $.get("/vol_up", (vol) => $("#vol").val(vol)); });
-$("#vol-down").click(() => { $.get("/vol_down", (vol) => $("#vol").val(vol)); });
-$("#vol").on('keydown', function(e){ if(e.key=='Enter') this.blur(); })
-	.on('blur', function(){ $.get("/vol/"+(this.value||0), (vol) => $("#vol").val(vol)); volume_changing = false; });
+$("#vol").on('input', function(){ volume_changing = true; showVol(this.value); })
+	.on('change', function(){ $.get("/vol/" + this.value, (vol) => { volume_changing = false; showVol(vol); }); });
+showVol({{ volume|tojson }});
 
 // Typed values: Enter or leaving the field applies them
 function bindTyped(sel, url, dflt, flag){
@@ -233,7 +232,6 @@ $("#audiodelay-info").click(() => {showNotification("{{getString1(60)}}","is-inf
 $("#subdelay-info").click(() => {showNotification("{{getString1(61)}}","is-info",8000)});
 $("#semitones-info").click(() => {showNotification("{{getString1(62)}}","is-info",10000)});
 $("#playspeed-info").click(() => {showNotification("{{getString1(200)}}","is-info",10000)});
-$("#pytorch-logo").click(() => {showNotification("{{getString1(63)}}","is-info",12000)});
 
 getNowPlaying();
 </script>

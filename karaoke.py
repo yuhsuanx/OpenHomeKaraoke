@@ -1,4 +1,4 @@
-import os, sys, io, random, time, json, datetime, re
+import os, sys, io, random, time, json, datetime, re, glob
 import logging, socket, subprocess, threading
 import multiprocessing as mp
 import shutil, psutil, traceback, tarfile, requests
@@ -366,75 +366,101 @@ class Karaoke:
 
 		# Clear the screen and start
 		logging.debug("Rendering splash screen")
-		self.screen.fill((0, 0, 0))
-		blitY = self.ref_W*self.screen.get_height()//self.screen.get_width() - 40
-		sysfont_size = 30
+		C = self.SPLASH_COLORS
+		n = self.normalize
+		self.screen.fill(C['bg'])
+		W, H = self.screen.get_size()
+		M = n(120)	# outer margin
+		x, y = M, M	# where the song info column starts
 
-		center = self.screen.get_rect().center
 		if self.hide_ip:
 			# Draw logo and name
-			text = self.render_font(sysfont_size * 2, getString(136), (255, 255, 255))
+			r = self.splash_text('bold', 60, getString(136), C['text'], (W // 2, H // 2), 'midtop')
 			if not hasattr(self, 'logo'):
 				self.logo = pygame.image.load(self.logo_path)
-			_, _, W, H = self.normalize(list(self.logo.get_rect()))
-			W, H = W/2, H/2
-			self.logo1 = pygame.transform.scale(self.logo, (W, H))
-			self.screen.blit(self.logo1, (center[0]-W/2, center[1]-H/2-text[1].height/2))
-			self.screen.blit(text[0], (center[0]-text[1].width/2, center[1]+H/2))
+			_, _, lw, lh = self.normalize(list(self.logo.get_rect()))
+			self.logo1 = pygame.transform.scale(self.logo, (lw / 2, lh / 2))
+			self.screen.blit(self.logo1, self.logo1.get_rect(midbottom=r.midtop))
 		else:
-			# Draw a large QR code in the centre, with the connection URL below it
-			qr_px = self.screen.get_height()*45//100
+			# QR code on a card at the left, with the connection URL below it; song info to its right
+			card = pygame.Rect(M, 0, n(520), n(640))
+			card.centery = H // 2
+			pygame.draw.rect(self.screen, C['card'], card, border_radius=int(n(28)))
+			pygame.draw.rect(self.screen, C['border'], card, max(1, int(n(2))), border_radius=int(n(28)))
+			white = pygame.Rect(0, 0, n(460), n(460))
+			white.midtop = (card.centerx, card.top + n(30))
+			pygame.draw.rect(self.screen, (255, 255, 255), white, border_radius=int(n(16)))
 			if not hasattr(self, 'p_image'):
 				self.p_image = pygame.image.load(self.qr_code_path)
-			self.p_image1 = pygame.transform.scale(self.p_image, (qr_px, qr_px))
-			qr_top = center[1] - qr_px//2 - self.normalize(40)
-			self.screen.blit(self.p_image1, (center[0]-qr_px//2, qr_top))
-			textY = qr_top + qr_px + self.normalize(20)
+			qr = pygame.transform.scale(self.p_image, (n(440), n(440)))
+			self.screen.blit(qr, qr.get_rect(center=white.center))
 			if not self.is_network_connected():
-				text = self.render_font(sysfont_size, getString(48), (255, 255, 255))
-				self.screen.blit(text[0], (center[0]-text[1].width/2, textY))
+				self.splash_text('medium', 30, getString(48), C['text'], (card.centerx, white.bottom + n(32)), 'midtop', card.width - n(40))
 				time.sleep(10)
 				logging.info("No IP found. Network/Wifi configuration required. For wifi config, try: sudo raspi-config or the desktop GUI: startx")
 				self.stop()
 			else:
-				text = self.render_font(sysfont_size, getString(49) + self.url, (255, 255, 255))
-				self.screen.blit(text[0], (center[0]-text[1].width/2, textY))
+				r = self.splash_text('medium', 34, '掃碼點歌  Scan to pick songs', C['text'], (card.centerx, white.bottom + n(32)), 'midtop', card.width - n(40))
+				self.splash_text('regular', 26, self.url, C['muted'], (card.centerx, r.bottom + n(14)), 'midtop', card.width - n(40))
 				# Windows and Mac-OS should use screen projection and AirPlay
 				if self.streamer_alive():
-					text = self.render_font(sysfont_size, getString(50) + self.url.rsplit(":", 1)[0] + ":4000", (255, 255, 255))
-					self.screen.blit(text[0], (center[0]-text[1].width/2, textY + self.normalize(40)))
-				if not self.firstSongStarted:
-					text = self.render_font(sysfont_size, getString(51), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((20, blitY - 40)))
-					text = self.render_font(sysfont_size, getString(52), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((20, blitY)))
+					self.splash_text('regular', 26, getString(50) + self.url.rsplit(":", 1)[0] + ":4000", C['muted'], (card.centerx, card.bottom + n(24)), 'midtop')
+			x, y = card.right + n(110), card.top + n(40)
 
-		blitY = 10
+		max_w = W - x - M
+		def song_block(label, title, user, y):
+			r = self.splash_text('medium', 28, label, C['accent'], (x, y), max_w=max_w)
+			artist, _, song = title.rpartition(' - ')
+			r = self.splash_text('bold', 96, song, C['text'], (x, r.bottom + n(30)), max_w=max_w)
+			if artist:
+				r = self.splash_text('regular', 44, artist, C['muted'], (x, r.bottom + n(22)), max_w=max_w)
+			return self.splash_text('regular', 32, '點歌  ' + user, C['muted'], (x, r.bottom + n(40)), max_w=max_w)
+
 		if not self.has_video:
 			logging.debug("Rendering current song to splash screen")
-			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (0, 240, 0))
-			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(10)))
-			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(80)))
-			blitY += 140
-
-		if len(self.queue) >= 1:
+			y = song_block('NOW PLAYING  ·  正在播放', self.now_playing or '', self.now_playing_user or '', y).bottom + n(80)
+		if self.queue:
 			logging.debug("Rendering next song to splash screen")
-			next_song = self.queue[0]["title"]
-			next_user = self.queue[0]["user"]
-			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (0, 240, 0))
-			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(blitY)))
-			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(blitY+70)))
+			r = song_block('UP NEXT  ·  下一首', self.queue[0]["title"], self.queue[0]["user"], y)
 			if self.preparing:
-				msg = {'vocals': 'Splitting vocals… 分離人聲中', 'lyrics': 'Timing lyrics… 歌詞對時中'}[self.preparing]
-				render_prep = self.render_font([50, 40, 30], msg, (0, 200, 255))
-				self.screen.blit(render_prep[0], (self.screen.get_width() - render_prep[1].width - 10, self.normalize(blitY+130)))
+				msg = {'vocals': '分離人聲中  Splitting vocals…', 'lyrics': '歌詞對時中  Timing lyrics…'}[self.preparing]
+				self.splash_text('medium', 30, msg, C['text'], (x + n(58), r.bottom + n(92)), 'midleft', max_w, pill=True)
 		elif not self.firstSongStarted:
-			text1 = self.render_font(sysfont_size, getString(196) + ': ' + self.download_path, (255, 255, 0))
-			self.screen.blit(text1[0], self.normalize((20, 20)))
-			text2 = self.render_font(sysfont_size, getString(197) + ': %d'%len(self.available_songs), (255, 255, 0))
-			self.screen.blit(text2[0], self.normalize((20, 30+sysfont_size)))
+			r = self.splash_text('medium', 28, 'LIBRARY  ·  歌曲庫', C['accent'], (x, y), max_w=max_w)
+			r = self.splash_text('bold', 96, f'{len(self.available_songs)} 首歌', C['text'], (x, r.bottom + n(30)), max_w=max_w)
+			self.splash_text('regular', 32, self.download_path, C['muted'], (x, r.bottom + n(30)), max_w=max_w)
+
+		self.splash_text('regular', 24, 'F  全螢幕        ESC  離開', C['muted'], (M, H - n(70)), 'bottomleft')
+
+	SPLASH_COLORS = dict(bg=(13, 15, 20), card=(22, 26, 34), pill=(30, 35, 48), border=(40, 44, 54),
+	                     text=(240, 242, 247), muted=(139, 147, 167), accent=(192, 76, 253), dot=(255, 77, 141))	# the web UI's dark theme
+	PINGFANG = next(iter(glob.glob('/System/Library/AssetsV2/com_apple_MobileAsset_Font*/*/AssetData/PingFang.ttc')), None)
+
+	def splash_text(self, weight, size, text, color, pos, anchor='topleft', max_w=None, pill=False):
+		"""Draw text on the splash screen and return its rect. size is in px of a 1920-wide screen; weight is
+		'regular'/'medium'/'bold' (PingFang TC when it has every glyph, else render_font's fallback fonts);
+		the text is scaled down to max_w; pill=True puts it on a rounded badge with a dot."""
+		font = None
+		if self.PINGFANG:
+			key = ('PingFang', weight, size)
+			if key not in self.fonts:
+				self.fonts[key] = pygame.freetype.Font(self.PINGFANG, self.normalize(size), font_index={'regular': 2, 'medium': 6, 'bold': 10}[weight])
+			if None not in self.fonts[key].get_metrics(text):
+				font = self.fonts[key]
+		surf, rect = font.render(text, color) if font else self.render_font(size, text, color)
+		if max_w and rect.width > max_w:
+			surf = pygame.transform.smoothscale(surf, (int(max_w), int(rect.height * max_w / rect.width)))
+			rect = surf.get_rect()
+		rect.topleft = (0, 0)
+		setattr(rect, anchor, pos)
+		if pill:
+			n = self.normalize
+			badge = pygame.Rect(rect.left - n(58), 0, rect.width + n(90), n(64))
+			badge.centery = rect.centery
+			pygame.draw.rect(self.screen, self.SPLASH_COLORS['pill'], badge, border_radius=int(n(32)))
+			pygame.draw.circle(self.screen, self.SPLASH_COLORS['dot'], (badge.left + n(34), badge.centery), n(9))
+		self.screen.blit(surf, rect)
+		return rect
 
 	def render_font(self, sizes, text, *kargs):
 		if type(sizes) != list:
