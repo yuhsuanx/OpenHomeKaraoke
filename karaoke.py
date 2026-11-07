@@ -17,6 +17,7 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient, mpvclient
 from lib.lyrics import make_lyrics
+from lib.catalog import Catalog, ID_RE
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString
@@ -173,6 +174,7 @@ class Karaoke:
 		self.url = "%s://%s:%s" % (('https' if self.ssl else 'http'), self.ip, self.port)
 
 		# get songs from download_path
+		self.catalog = Catalog(self.download_path + '.library.json')
 		self.get_available_songs()
 		self.get_youtubedl_version()
 		self.song2vol = Try(lambda: json.load(Open(self.download_path+'/.mp3_volume.json.gz')), {})
@@ -591,8 +593,13 @@ class Karaoke:
 			self.downloading_songs[song_url] = 0
 			bn = self.get_downloaded_file_basename(song_url)
 			if bn:
-				stem, sep, rest = bn.rpartition('---')	# '<YouTube title>---<id>.<ext>'
-				new_bn = Try(lambda: normalize_song_name(stem), stem) + sep + rest if sep else bn
+				m = ID_RE.search(bn)	# '<YouTube title>---<id>.<ext>'
+				if m:
+					stem = bn[:m.start()]
+					new_bn = Try(lambda: normalize_song_name(stem), stem) + bn[m.start():]
+					self.catalog.yt_titles[m.group(1)] = stem	# stored in the catalog by get_available_songs() below
+				else:
+					new_bn = bn
 				shutil.move(self.download_path+'tmp/'+bn, self.download_path+new_bn)
 				bn = new_bn
 				self.get_available_songs()
@@ -629,6 +636,7 @@ class Karaoke:
 
 		# self.available_songs = sorted(files_grabbed, key = lambda f: str.lower(os.path.basename(f)))
 		self.available_songs = sorted(self.songname_trans, key = self.songname_trans.get)
+		self.catalog.sync(self.available_songs)
 
 	def get_all_assoc_files(self, song_path):
 		basename = os.path.basename(song_path)
