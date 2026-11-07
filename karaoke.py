@@ -538,7 +538,7 @@ class Karaoke:
 			for each in output.split("\n"):
 				if len(each) > 2:
 					j = json.loads(each)
-					if (not "title" in j) or (not "url" in j):
+					if (not "title" in j) or (not "url" in j) or not j.get("duration"):	# no duration: a channel/playlist (or live stream), not a song
 						continue
 					rc.append([j["title"], j["url"], j["id"], sec2hhmmss(j["duration"])])
 			return rc
