@@ -16,6 +16,7 @@ from bidi.algorithm import get_display
 from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
+from lib.lyrics import make_lyrics
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString
@@ -42,10 +43,12 @@ def cleanse_modules(name):
 		pass
 
 
+VIDEO_EXTS = ('.mp4', '.mkv', '.webm', '.avi', '.mov')
+
 def detect_black_bars(file_path):
 	"""Return VLC --crop borders 'L+T+R+B' that cut black bars recorded into a video, or '' if none.
 	Samples 3 points and keeps the area that is picture in any of them, so dark scenes never over-crop."""
-	if os.path.splitext(file_path)[1].lower() not in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
+	if os.path.splitext(file_path)[1].lower() not in VIDEO_EXTS:
 		return ''
 	W, H = map(int, check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
 	                              '-of', 'csv=p=0', file_path]).decode().strip().split(',')[:2])
@@ -92,6 +95,10 @@ class Karaoke:
 	vocal_process = None
 	crops = None		# basename -> VLC crop geometry, see get_crop()
 	crop_lock = threading.Lock()
+	lyrics_failed = set()	# basenames LRCLIB/Whisper couldn't do, so they aren't retried
+	preparing = ''		# what the next song still waits for, shown on the splash screen
+	splitter_checked = (0, False)	# (time, vocal splitter running) cache for song_ready()
+	prepare_timeout = 300	# secs; play anyway if the split/lyrics take longer than this
 	vocal_device = None
 	vocal_mode = 'mixed'
 	is_paused = True
@@ -399,6 +406,10 @@ class Karaoke:
 			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (0, 240, 0))
 			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(blitY)))
 			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(blitY+70)))
+			if self.preparing:
+				msg = {'vocals': 'Splitting vocals… 分離人聲中', 'lyrics': 'Timing lyrics… 歌詞對時中'}[self.preparing]
+				render_prep = self.render_font([50, 40, 30], msg, (0, 200, 255))
+				self.screen.blit(render_prep[0], (self.screen.get_width() - render_prep[1].width - 10, self.normalize(blitY+130)))
 		elif not self.firstSongStarted:
 			text1 = self.render_font(sysfont_size, getString(196) + ': ' + self.download_path, (255, 255, 0))
 			self.screen.blit(text1[0], self.normalize((20, 20)))
@@ -581,7 +592,8 @@ class Karaoke:
 				self.download_path + 'nonvocal/' + basename + '.m4a',
 				self.download_path + 'nonvocal/.' + basename + '.m4a',
 				self.download_path + 'vocal/' + basename + '.m4a',
-				self.download_path + 'vocal/.' + basename + '.m4a']
+				self.download_path + 'vocal/.' + basename + '.m4a',
+				self.lyrics_path(basename)]
 
 	def delete_if_exist(self, filename):
 		if os.path.isfile(filename):
@@ -659,6 +671,42 @@ class Karaoke:
 					json.dump(self.crops, fp, ensure_ascii=False)
 			return self.crops[key]
 
+	def lyrics_path(self, file_path):
+		return self.download_path + 'lyrics/' + os.path.basename(file_path) + '.ass'
+
+	def song_ready(self, file_path):
+		"""'' if file_path has its vocal split and lyrics done, else what it still waits for: 'vocals' or 'lyrics'."""
+		if time.time() - self.splitter_checked[0] > 5:	# process scan is slow, called in the splash loop
+			self.splitter_checked = (time.time(), os.path.isdir(self.download_path + 'vocal') and self.vocal_alive())
+		if self.splitter_checked[1] and not os.path.isfile(self.slave_path('vocal', file_path)):
+			return 'vocals'
+		if os.path.splitext(file_path)[1].lower() in VIDEO_EXTS and not os.path.isfile(self.lyrics_path(file_path)) \
+				and os.path.basename(file_path) not in self.lyrics_failed:
+			return 'lyrics'
+		return ''
+
+	def lyrics_worker(self):
+		"""Background: make lyrics for queued songs, in queue order, once their vocal track is ready."""
+		os.makedirs(self.download_path + 'lyrics', exist_ok=True)
+		while self.running:
+			todo = [i['file'] for i in list(self.queue) if self.song_ready(i['file']) == 'lyrics']
+			if not todo:
+				time.sleep(1)
+				continue
+			f = todo[0]
+			vocal = self.slave_path('vocal', f)
+			try:
+				tm = time.time()
+				if make_lyrics(f, vocal if os.path.isfile(vocal) else f, self.lyrics_path(f)):
+					logging.info(f'Lyrics ready in {time.time()-tm:.0f}s: {os.path.basename(f)}')
+				else:
+					logging.warning(f'No lyrics found on LRCLIB: {os.path.basename(f)}')
+					self.lyrics_failed.add(os.path.basename(f))
+			except Exception as e:
+				logging.error(f'Lyrics failed for {os.path.basename(f)}: {e}')
+				self.lyrics_failed.add(os.path.basename(f))
+			time.sleep(0.5)	# LRCLIB asks for 200-500 ms between requests
+
 	def play_file(self, file_path, extra_params = []):
 		self.switchingSong = True
 		if self.use_vlc:
@@ -682,8 +730,9 @@ class Karaoke:
 				extra_params1 += [f'--audio-desync={self.audio_delay * 1000}']
 			if self.subtitle_delay:
 				extra_params1 += [f'--sub-delay={self.subtitle_delay * 10}']
+			lyrics_file = self.lyrics_path(file_path)
 			if self.show_subtitle:
-				extra_params1 += [f'--sub-track=0']
+				extra_params1 += [f'--sub-track=0'] + ([f'--sub-file={lyrics_file}'] if os.path.isfile(lyrics_file) else [])
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
 			crop = Try(lambda: self.get_crop(file_path), '')
@@ -698,7 +747,7 @@ class Karaoke:
 				xml = self.vlcclient.play_file(file_path, self.volume, extra_params + extra_params1)
 			else:
 				xml = self.vlcclient.play_file_transpose(file_path, self.now_playing_transpose, self.volume, extra_params + extra_params1)
-			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml
+			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml or os.path.isfile(lyrics_file)	# keep the toggle visible when lyrics are hidden
 			self.has_video = "<info name='Type'>Video</info>" in xml
 			self.volume = round(float(self.vlcclient.get_val_xml(xml, 'volume')))
 			if self.normalize_vol:
@@ -1009,25 +1058,13 @@ class Karaoke:
 	def slave_path(self, mode, filename):
 		return self.download_path + mode + '/' + ('' if self.use_DNN_vocal else '.') + os.path.basename(filename) + '.m4a'
 
-	def switch_audio_track(self, slave):
-		"""Switch live to an already-loaded track ('' = the video's own audio). Returns False if it can't."""
-		info = self.vlcclient.get_stream_info(self.vlcclient.command().text)
-		ids = sorted(int(k.split()[-1]) for k, v in info.items() if k.startswith('Stream ') and v.get('Type') == 'Audio')
-		if len(ids) < len(self.loaded_slaves) + 1:
-			return False
-		i = 0 if slave == '' else len(ids) - len(self.loaded_slaves) + self.loaded_slaves.index(slave)
-		return self.vlcclient.command(f'audio_track&val={ids[i]}').status_code == 200
-
 	def play_vocal(self, mode = None, force = False):
 		# mode=vocal/nonvocal/mixed, or else (use current)
 		if self.use_vlc:
 			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
 			if not force and self.now_playing_slave == play_slave:
 				return
-			if not force and (play_slave == '' or play_slave in self.loaded_slaves) and self.switch_audio_track(play_slave):
-				self.now_playing_slave = play_slave
-				self.get_vocal_info(True)
-				return
+			# restart VLC at the current position: VLC 3 goes silent when switching live to an --input-slave audio track
 			status_xml = self.vlcclient.command().text if self.is_paused else self.vlcclient.pause(False).text
 			info = self.vlcclient.get_info_xml(status_xml)
 			posi = info['position']*info['length']
@@ -1155,11 +1192,12 @@ class Karaoke:
 		os.system(f"sleep {delay} && tmux send-keys -t PiKaraoke:0.3 C-c")
 
 	def vocal_alive(self):
-		try:
-			return bool(self.vocal_process and self.vocal_process.is_alive())\
-					or bool([1 for p in psutil.process_iter() if 'vocal_splitter.py' in p.cmdline()])
-		except:
-			return None
+		def is_splitter(p):
+			try:
+				return 'vocal_splitter.py' in p.cmdline()
+			except psutil.Error:	# e.g. AccessDenied on other users' processes (macOS)
+				return False
+		return bool(self.vocal_process and self.vocal_process.is_alive()) or any(map(is_splitter, psutil.process_iter()))
 
 	def vocal_restart(self):
 		if self.platform == 'windows' or self.run_vocal:
@@ -1239,6 +1277,7 @@ class Karaoke:
 		# Windows does not have tmux, vocal splitter can only be invoked from the main program
 		if self.platform == 'windows' or self.run_vocal:
 			Try(lambda: self.vocal_restart())
+		threading.Thread(target=self.lyrics_worker, daemon=True).start()
 
 		while self.running:
 			try:
@@ -1252,8 +1291,14 @@ class Karaoke:
 						next_file = self.queue[0]['file']
 						threading.Thread(target=lambda: Try(lambda: self.get_crop(next_file)), daemon=True).start()
 						tm = time.time()
-						while time.time()-tm < self.splash_delay:
+						# wait for the splash delay, and for the next song's vocal split and lyrics (up to prepare_timeout)
+						while self.running and self.queue and (time.time()-tm < self.splash_delay or
+								(self.song_ready(self.queue[0]['file']) and time.time()-tm < self.prepare_timeout)):
+							self.preparing = self.song_ready(self.queue[0]['file'])
 							self.handle_run_loop()
+						self.preparing = ''
+						if not self.queue:
+							continue
 						head = self.queue.pop(0)
 						self.play_file(head['file'])
 						if self.cloud:

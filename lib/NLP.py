@@ -18,7 +18,7 @@ def normalize_song_name(title):
 	def clean(s):
 		s = TITLE_NOISE.sub(' ', s)
 		s = re.sub(r'[【\[(（][^】\])）]*[】\])）]', ' ', s)	# drop bracketed extras like (歌詞版) 【HD】
-		words = s.split()
+		words = re.sub(r'([㐀-鿿])(?=[A-Za-z])', r'\1 ', s).split()	# '藍又時Shadya' -> '藍又時 Shadya'
 		if HAS_CJK.search(s):	# '周杰倫 Jay Chou' -> '周杰倫'
 			words = [w for w in words if HAS_CJK.search(w)]
 		return ' '.join(words).strip(' -─—–|｜:：')
@@ -27,6 +27,8 @@ def normalize_song_name(title):
 		artist, song = title[:m.start()], m.group(1)
 	elif ' - ' in title:
 		artist, song = title.split(' - ', 1)
+	elif m := next((b for b in re.finditer(r'【([^】]+)】', title) if clean(b.group(1))), None):	# '藍又時Shadya Lan【倫敦的愛情】Official MV'
+		artist, song = title[:m.start()], m.group(1)
 	else:
 		return title
 	artist, song = clean(artist), clean(song)

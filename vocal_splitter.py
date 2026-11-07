@@ -198,7 +198,9 @@ song_path = ''
 last_completed = ''
 use_DNN = True
 
-def get_next_file(cuda_device):
+def get_next_file(cuda_device, only=None):
+	"""Next song to split: queued songs first, then the library. only='queue'/'library' restricts to one of them,
+	so two splitters can share the work (one for live downloads, one for the backlog)."""
 	global song_path, use_DNN, last_completed
 	try:
 		obj = requests.get(f'http://localhost:5001/get_vocal_todo_list/{cuda_device.type}/{last_completed}').json()
@@ -212,15 +214,19 @@ def get_next_file(cuda_device):
 
 	if not os.path.isdir(song_path+'/nonvocal') and not os.path.isdir(song_path+'/vocal'):
 		return None
-	for fn in obj['queue']:
+	for fn in (obj['queue'] if only != 'library' else []):
 		bn = ('' if use_DNN else '.')+os.path.basename(fn)
 		if os.path.isdir(song_path+'/nonvocal') and not os.path.isfile(f'{song_path}/nonvocal/{bn}.m4a'):
 			return os.path.basename(fn)
 		if os.path.isdir(song_path+'/vocal') and not os.path.isfile(f'{song_path}/vocal/{bn}.m4a'):
 			return os.path.basename(fn)
 
-	# get from listing directory
-	for bn in [i for i in os.listdir(song_path) if not i.startswith('.') and os.path.isfile(song_path+'/'+i)]:
+	if only == 'queue':
+		return None
+
+	# get from listing directory, leaving queued songs to the queue splitter
+	queued = {os.path.basename(fn) for fn in obj['queue']} if only == 'library' else set()
+	for bn in [i for i in os.listdir(song_path) if not i.startswith('.') and os.path.isfile(song_path+'/'+i) and i not in queued]:
 		bn1 = ('' if use_DNN else '.')+bn
 		if os.path.isdir(song_path+'/nonvocal') and not os.path.isfile(f'{song_path}/nonvocal/{bn1}.m4a'):
 			return bn
@@ -247,6 +253,8 @@ def main(argv):
 	p.add_argument('--tta', '-t', action = 'store_true')
 	p.add_argument('--ramdir', '-rd', help = 'Temporary directory on RAMDISK to reduce I/O load',
 	               default = 'z:/' if sys.platform.startswith('win') else '/dev/shm')
+	p.add_argument('--only', choices = ['queue', 'library'], default = None,
+	               help = 'Only split queued songs, or only the rest of the library (default: both, queued first)')
 	args = p.parse_args(argv)
 
 	song_path = os.path.expanduser(args.download_path).rstrip('/')
@@ -267,18 +275,20 @@ def main(argv):
 	print('done', flush = True)
 
 	# set song_path global variable from local server
-	get_next_file(device)
+	get_next_file(device, args.only)
 
 	# Use RAMDISK for large temporary .wav files for speed up if available
 	RAMDIR = args.ramdir if os.path.isdir(args.ramdir) else song_path
 
-	# Create temporary filenames if not done yet
-	in_wav, out_wav_vocal, out_wav_nonvocal, out_m4a_vocal, out_m4a_nonvocal = \
-		[f'{RAMDIR}/.input.wav', f'{RAMDIR}/.vocal.wav', f'{RAMDIR}/.nonvocal.wav', f'{song_path}/.vocal.m4a', f'{song_path}/.nonvocal.m4a']
+	# Create temporary filenames if not done yet (per process, so several splitters can run at once)
+	pid = os.getpid()
+	in_wav, out_wav_vocal, out_wav_nonvocal, out_m4a_vocal, out_m4a_nonvocal, tmp_mp4 = \
+		[f'{RAMDIR}/.{pid}.input.wav', f'{RAMDIR}/.{pid}.vocal.wav', f'{RAMDIR}/.{pid}.nonvocal.wav',
+		 f'{song_path}/.{pid}.vocal.m4a', f'{song_path}/.{pid}.nonvocal.m4a', f'{song_path}/.{pid}.normalizing.mp4']
 
 	# Main loop
 	while True:
-		next_file = get_next_file(device)
+		next_file = get_next_file(device, args.only)
 		if not next_file:
 			time.sleep(2)
 			continue
@@ -286,7 +296,7 @@ def main(argv):
 		# run vocal splitter on next_file
 		print(f'Start processing {next_file} :')
 		ffm_video2wav(song_path+'/'+next_file, in_wav)
-		ffm_normalize_video(song_path+'/'+next_file, f'{song_path}/.normalizing.mp4')
+		ffm_normalize_video(song_path+'/'+next_file, tmp_mp4)
 
 		if use_DNN:
 			split_vocal_by_dnn(in_wav, out_wav_nonvocal, out_wav_vocal, args)

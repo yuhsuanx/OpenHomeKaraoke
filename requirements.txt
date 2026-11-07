@@ -27,3 +27,4 @@ soundfile
 spec_utils
 pip
 opencc-python-reimplemented
+stable-ts

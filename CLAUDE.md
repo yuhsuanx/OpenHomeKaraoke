@@ -10,7 +10,7 @@ OpenHomeKaraoke is a YouTube-based home karaoke system with DNN-based vocal spli
 
 ### Multi-Process Design
 
-Two processes: the main Flask app (`app.py`) and the vocal splitter (`vocal_splitter.py`, background DNN separation). Upstream runs them in separate tmux panes; this checkout's `run.sh` uses `-V` so `app.py` spawns the splitter itself via `multiprocessing`.
+Two processes: the main Flask app (`app.py`) and the vocal splitter (`vocal_splitter.py`, background DNN separation). Upstream runs them in separate tmux panes; this checkout runs the splitter as its own background process, started separately from `run.sh` (`-V` would make `app.py` spawn a second one).
 
 ### Key Components
 
@@ -79,11 +79,12 @@ uv pip install -r requirements.txt
 
 ### Running the Application
 
-**Linux/Mac OS (full stack, single process):**
+**Linux/Mac OS:**
 ```bash
-./run.sh
+./run.sh                                                    # app only, port 5001
+uv run python3 vocal_splitter.py -p -d ~/pikaraoke-songs    # splitter, separate background process
 ```
-Runs `app.py -p 5001 -V`; `-V` starts the vocal splitter as a child process (no tmux). Without `-V`, the app assumes the upstream tmux layout (`vocal_restart()` sends keys to tmux pane `PiKaraoke:0.4`).
+`app.py` detects a running splitter (`vocal_alive()`) and waits for a queued song's vocal track before making lyrics and playing it. `-V` instead spawns the splitter as a child process; don't combine it with a separately started one (they share temp files). Without either, `vocal_restart()` assumes the upstream tmux layout (sends keys to tmux pane `PiKaraoke:0.4`).
 
 **Run only Flask app (no tmux, for development):**
 ```bash
