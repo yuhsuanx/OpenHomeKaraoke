@@ -27,6 +27,8 @@ def normalize_song_name(title):
 		artist, song = title[:m.start()], m.group(1)
 	elif ' - ' in title:
 		artist, song = title.split(' - ', 1)
+	elif len(parts := re.split(r'(?<=[㐀-鿿])-|-(?=[㐀-鿿])', title)) > 1:	# '李玖哲Nicky Lee-想太多Think Too Much-完整版MV', not 'A-Lin'
+		artist, song = parts[0], parts[1]
 	elif m := next((b for b in re.finditer(r'【([^】]+)】', title) if clean(b.group(1))), None):	# '藍又時Shadya Lan【倫敦的愛情】Official MV'
 		artist, song = title[:m.start()], m.group(1)
 	else:
