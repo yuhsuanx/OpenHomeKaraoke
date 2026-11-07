@@ -22,7 +22,8 @@ def normalize_song_name(title):
 		if HAS_CJK.search(s):	# '周杰倫 Jay Chou' -> '周杰倫'
 			words = [w for w in words if HAS_CJK.search(w)]
 		return ' '.join(words).strip(' -─—–|｜:：')
-	m = re.search(r'[《「『](.+?)[》」』]', title)
+	# 〈〉 marks a song; 《》 can be the album/drama it's from: '曾沛慈〈After Everything〉原創影集《來！金來號！》插曲'
+	m = re.search(r'〈(.+?)〉', title) or re.search(r'[《「『](.+?)[》」』]', title)
 	if m:
 		artist, song = title[:m.start()], m.group(1)
 	elif ' - ' in title:
