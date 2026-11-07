@@ -497,6 +497,7 @@ def f_search():
 	return render_template(
 		"f_search.html",
 		getString1 = lambda ii: getString1(request.client_lang, ii),
+		search_string = search_string,
 		songs = K.available_songs,
 		high_quality = K.high_quality,
 		search_results = search_results,
@@ -590,7 +591,7 @@ def f_browse():
 		sort_order_text = getString2(100)
 
 	results_per_page = 500
-	pagination = Pagination(css_framework = 'bulma', page = page, total = len(songs), search = search, search_msg = getString2(103),
+	pagination = Pagination(css_framework = 'bootstrap5', page = page, total = len(songs), search = search, search_msg = getString2(103),
 	                        record_name = getString2(101), display_msg = getString2(102), per_page = results_per_page)
 	start_index = (page - 1) * (results_per_page - 1)
 	return render_template(
