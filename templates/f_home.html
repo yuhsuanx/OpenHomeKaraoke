@@ -1,251 +1,234 @@
+<!-- Now playing -->
+<section class="ok-card np-hero p-4 mb-3">
+	<div class="d-flex align-items-center justify-content-between">
+		<span class="section-label">{{getString1(74)}}</span>
+		<span id="np-eq" class="eq control-box" hidden><i></i><i></i><i></i></span>
+	</div>
+	<h1 id="now-playing" class="np-title"></h1>
+	<div class="singer control-box" hidden><i class="bi bi-person-fill"></i> <span id="now-playing-user"></span></div>
+
+	<div class="control-box mt-3" hidden>
+		<input id="seektrack" type="range" class="form-range" min="0" max="{{ seektrack_max }}" value="{{ seektrack_value }}"
+			onmousedown="seektrack_seeking=true" onmouseup="seektrack_seeking=false"
+			ontouchstart="seektrack_seeking=true" ontouchend="seektrack_seeking=false">
+		<div class="d-flex justify-content-between time"><span id="seektrack-val">0:00</span><span id="seektrack-max">0:00</span></div>
+
+		<div class="transport my-3">
+			<button id="restart" class="btn btn-soft btn-round" title="{{getString1(79)}}"><i class="bi bi-skip-start-fill"></i></button>
+			<button id="pause-btn" class="btn btn-grad btn-round play" title="{{getString1(80)}}"><i id="pause-resume" class="bi bi-pause-fill"></i></button>
+			<button id="skip" class="btn btn-soft btn-round" title="{{getString1(81)}}"><i class="bi bi-skip-end-fill"></i></button>
+		</div>
+
+		<div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+			<div class="stepper" title="{{getString1(83)}}">
+				<button id="vol-down" class="btn btn-soft btn-round" title="{{getString1(82)}}"><i class="bi bi-volume-down-fill"></i></button>
+				<input id="vol" type="number" inputmode="numeric" value="{{ volume }}" onfocus="volume_changing=true">
+				<button id="vol-up" class="btn btn-soft btn-round" title="{{getString1(84)}}"><i class="bi bi-volume-up-fill"></i></button>
+			</div>
+			<div class="d-flex align-items-center gap-2">
+				<button id="pytorch-logo" class="btn btn-sm btn-soft rounded-pill" hidden title="DNN"><i class="bi bi-cpu"></i> DNN</button>
+				<div class="btn-group seg" role="group">
+					<button id="s3t1" class="btn btn-sm btn-soft">{{getString1(65)}}</button>
+					<button id="s3t2" class="btn btn-sm btn-soft">{{getString1(66)}}</button>
+					<button id="s3t3" class="btn btn-sm btn-soft">{{getString1(67)}}</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<!-- Up next -->
+<section class="ok-card p-3 px-4 mb-3">
+	<div class="section-label mb-1">{{getString1(75)}}</div>
+	<div id="up-next" class="d-flex align-items-center justify-content-between gap-3"></div>
+</section>
+
+<!-- Fine-tuning -->
+<section class="ok-card p-3 px-4 control-box" hidden>
+	{% if show_transpose %}
+	<div class="ctl-row">
+		<div class="flex-grow-1">
+			<div class="d-flex justify-content-between align-items-center mb-1">
+				<span>{{getString1(68)}} <button id="semitones-info" class="info-btn"><i class="bi bi-info-circle"></i></button></span>
+				<span><span id="semitones-label" class="text-secondary small"></span>
+					<button id="reset_key" class="btn btn-sm btn-soft rounded-pill ms-2 text-nowrap" hidden title="{{getString1(203)}}" onclick="$.get('/transpose/0')">{{getString1(204)}}</button></span>
+			</div>
+			<input id="transpose" type="range" class="form-range" min="-12" max="12" value="{{ transpose_value }}"
+				onmousedown="transpose_seeking=true" onmouseup="transpose_seeking=false"
+				ontouchstart="transpose_seeking=true" ontouchend="transpose_seeking=false">
+		</div>
+	</div>
+	<div class="ctl-row">
+		<div class="flex-grow-1">
+			<div class="d-flex justify-content-between align-items-center mb-1">
+				<span>{{getString1(199)}} <button id="playspeed-info" class="info-btn"><i class="bi bi-info-circle"></i></button></span>
+				<span class="stepper">
+					<input id="playspeed-val" type="number" step="0.05" min="0.5" max="2" title="{{getString1(202)}}" onfocus="playspeed_typing=true">
+					<span class="text-secondary">x</span>
+					<button id="reset_speed" class="btn btn-sm btn-soft rounded-pill ms-1 text-nowrap" hidden title="{{getString1(201)}}" onclick="$.get('/play_speed/1')">{{getString1(205)}}</button>
+				</span>
+			</div>
+			<input id="playspeed" type="range" class="form-range" min="80" max="120" value="{{ play_speed }}"
+				onmousedown="playspeed_seeking=true" onmouseup="playspeed_seeking=false"
+				ontouchstart="playspeed_seeking=true" ontouchend="playspeed_seeking=false">
+		</div>
+	</div>
+	{% endif %}
+
+	<div class="ctl-row">
+		<span>{{getString1(77)}} <button id="audiodelay-info" class="info-btn"><i class="bi bi-info-circle"></i></button></span>
+		<span class="stepper">
+			<button id="delay-dec" class="btn btn-soft btn-round" title="{{getString1(88)}}"><i class="bi bi-dash-lg"></i></button>
+			<input id="delay-val" type="number" step="0.1" title="{{getString1(89)}}" value="0" onfocus="audiodelay_typing=true">
+			<button id="delay-inc" class="btn btn-soft btn-round" title="{{getString1(90)}}"><i class="bi bi-plus-lg"></i></button>
+		</span>
+	</div>
+
+	<div class="ctl-row" id="subdelay-box">
+		<span>{{getString1(78)}} <button id="subdelay-info" class="info-btn"><i class="bi bi-info-circle"></i></button></span>
+		<span class="stepper">
+			<button id="subtitle-sel" class="btn btn-soft btn-round" title="{{getString1(198)}}"><i class="bi bi-badge-cc"></i></button>
+			<button id="subdelay-dec" class="btn btn-soft btn-round" title="{{getString1(85)}}"><i class="bi bi-dash-lg"></i></button>
+			<input id="subdelay-val" type="number" step="0.1" title="{{getString1(86)}}" value="0" onfocus="subdelay_typing=true">
+			<button id="subdelay-inc" class="btn btn-soft btn-round" title="{{getString1(87)}}"><i class="bi bi-plus-lg"></i></button>
+		</span>
+	</div>
+</section>
+
 <script>
-var transpose_seeking = false;
-var seektrack_seeking = false;
-var playspeed_seeking = false;
-var audiodelay_typing = false;
-var playspeed_typing = false;
-var subdelay_typing = false;
-var volume_changing = false;
-var toggleSwitch, seektrack;
+var transpose_seeking = false, seektrack_seeking = false, playspeed_seeking = false;
+var audiodelay_typing = false, playspeed_typing = false, subdelay_typing = false, volume_changing = false;
+var seektrack = $("#seektrack")[0];
 var obj = {};
-function checkMobile() {
-	let check = false;
-	(function(a){if(/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino|android|ipad|playbook|silk/i.test(a)||/1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i.test(a.substr(0,4))) check = true;})(navigator.userAgent||navigator.vendor||window.opera);
-	return check;
-};
-var isMobile = checkMobile();
 
 function getSemitonesLabel(value) {return value>0 ? ("+"+value+"{{getString1(91)}}"):(value + "{{getString1(91)}}");}
-function getHHMMSS(value) {return (new Date(value*1000)).toISOString().substr(11, 8)}
+function getHHMMSS(value) {
+	value = Math.max(0, Math.floor(value || 0));
+	var h = Math.floor(value/3600), m = Math.floor(value%3600/60), s = value%60;
+	return (h ? h+':'+String(m).padStart(2,'0') : m) + ':' + String(s).padStart(2,'0');
+}
+function setPaused(paused){
+	$("#pause-resume").toggleClass("bi-play-fill", paused).toggleClass("bi-pause-fill", !paused);
+	$("#np-eq").toggleClass("paused", paused);
+}
 function update(data){
 	try{obj = JSON.parse(data);}
 	catch{console.log(`JSON parse error: ${data}`);return;}
 	if (obj.now_playing) {
-	var nowPlayingHtml = `<p style="margin-bottom: 5px">${obj.now_playing}</p>
-		<p class="has-text-success" style="margin-bottom: 5px"><i class="icon icon-adult" title="Current singer"></i>${obj.now_playing_user}</p>`;
+		$("#now-playing").removeClass('np-empty').text(obj.now_playing);
+		$("#now-playing-user").text(obj.now_playing_user);
+		$(".control-box").prop('hidden', false);
 
-	if ($("#transpose")){
-		if(!transpose_seeking){
-			$("#transpose").val( obj.transpose_value );
-			$("#semitones-label").html(getSemitonesLabel(obj.transpose_value));
-			set_reset_key(obj.transpose_value!=0);
-		}
-		
-		if(!playspeed_seeking){
-			$("#playspeed").val( Math.round(obj.play_speed*100) );
-			var spd_val = parseFloat(obj.play_speed).toFixed(2);
-			if(spd_val>=0.8 && spd_val<=1.2)$("#playspeed").show();
-			else $("#playspeed").hide();
-			if(!playspeed_typing && obj.play_speed!=null){
-				$("#playspeed-val").html(obj.play_speed.toFixed(2));
-				set_reset_speed(obj.play_speed!=1);
+		if ($("#transpose").length){
+			if(!transpose_seeking){
+				$("#transpose").val(obj.transpose_value);
+				$("#semitones-label").text(getSemitonesLabel(obj.transpose_value));
+				$("#reset_key").prop('hidden', obj.transpose_value==0);
+			}
+			if(!playspeed_seeking){
+				$("#playspeed").val(Math.round(obj.play_speed*100));
+				var spd_val = parseFloat(obj.play_speed).toFixed(2);
+				$("#playspeed").prop('hidden', !(spd_val>=0.8 && spd_val<=1.2));
+				if(!playspeed_typing && obj.play_speed!=null){
+					$("#playspeed-val").val(obj.play_speed.toFixed(2));
+					$("#reset_speed").prop('hidden', obj.play_speed==1);
+				}
 			}
 		}
-	}
 
-	$("#now-playing").html(nowPlayingHtml);
-	$(".control-box").show();
+		if(!seektrack_seeking){
+			$("#seektrack").attr('max', obj.seektrack_max).val(obj.seektrack_value);
+			$("#seektrack-val").text(getHHMMSS(obj.seektrack_value));
+			$("#seektrack-max").text(getHHMMSS(obj.seektrack_max));
+		}
 
-	if($("#seektrack") && !seektrack_seeking){
-		$("#seektrack").attr({'max':obj.seektrack_max, 'value':obj.seektrack_value});
-		$("#seektrack").val(obj.seektrack_value);
-		$("#seektrack-val").text(getHHMMSS(obj.seektrack_value));
-		$("#seektrack-max").text(getHHMMSS(obj.seektrack_max));
-	}
+		if(obj.audio_delay!==null && !audiodelay_typing)
+			$("#delay-val").val(obj.audio_delay.toFixed(2));
 
-	if(obj.audio_delay!==null && !audiodelay_typing)
-		$("#delay-val").text(obj.audio_delay.toFixed(2));
+		if("subtitle_delay" in obj){
+			$("#subdelay-box").prop('hidden', false);
+			if(obj.subtitle_delay!==null && !subdelay_typing)
+				$("#subdelay-val").val(obj.subtitle_delay.toFixed(1));
+			$('#subtitle-sel').toggleClass('btn-grad', !!obj.show_subtitle).toggleClass('btn-soft', !obj.show_subtitle);
+		} else {
+			$("#subdelay-box").prop('hidden', true);
+		}
 
-	if("subtitle_delay" in obj){
-		$("#subdelay-box").show();
-		if(obj.subtitle_delay!==null && !subdelay_typing)
-			$("#subdelay-val").text(obj.subtitle_delay.toFixed(1));
-		$('#subtitle-sel').css('text-decoration', obj.show_subtitle?"":"line-through");
+		var use_DNN = obj.vocal_info&0x40;
+		s3_enable(1, use_DNN?(obj.vocal_info&1):(obj.vocal_info&4));
+		s3_enable(3, use_DNN?(obj.vocal_info&2):(obj.vocal_info&8));
+		s3_go_to((obj.vocal_info>>4)&3, false);
+		$("#pytorch-logo").prop('hidden', !use_DNN);
+		$("#vol").toggleClass('vol-norm', !!obj.vol_norm);
 	} else {
-		$("#subdelay-box").hide();
-	}
-
-	var use_DNN = obj.vocal_info&0x40;
-	s3_enable(1, use_DNN?(obj.vocal_info&1):(obj.vocal_info&4));
-	s3_enable(3, use_DNN?(obj.vocal_info&2):(obj.vocal_info&8));
-	s3_go_to((obj.vocal_info>>4)&3, false);
-	use_DNN ? $("#pytorch-logo").show():$("#pytorch-logo").hide();
-	
-	if(obj.vol_norm)
-		$("#vol").addClass('boxedText');
-	else
-		$("#vol").removeClass('boxedText');
-	} else {
-		$("#now-playing").html("{{getString1(69)}}");
-		$(".control-box").hide();
+		$("#now-playing").addClass('np-empty').text("{{getString1(69)}}");
+		$(".control-box").prop('hidden', true);
 	}
 
 	if (obj.up_next) {
-	$("#up-next").html(`<p><span style="max-width:70%; white-space:nowrap; overflow:hidden; position:absolute; padding-top:4px;">${obj.up_next}</span>
-		<span class="has-text-success" style="float:right; max-width:30%; white-space:nowrap; overflow:hidden;"><i class="icon icon-adult" title="Next singer"></i>${obj.next_user}</span></p>`);
+		$("#up-next").html(`<span class="text-truncate">${esc(obj.up_next)}</span>
+			<span class="singer text-nowrap small"><i class="bi bi-person-fill"></i> ${esc(obj.next_user)}</span>`);
 	} else {
-		$("#up-next").html("{{getString1(70)}}");
+		$("#up-next").html(`<span class="text-secondary">{{getString1(70)}}</span>`);
 	}
 
-	if (obj.is_paused) {
-		$("#pause-resume").removeClass("icon-pause").addClass("icon-play");
-		$("#playing_gif").hide();$("#playing_png").show();
-	} else {
-		$("#pause-resume").removeClass("icon-play").addClass("icon-pause");
-		$("#playing_gif").show();$("#playing_png").hide();
-	}
+	setPaused(obj.is_paused);
 
 	if("volume" in obj && !volume_changing)
-		$("#vol").text(obj.volume);
+		$("#vol").val(obj.volume);
 }
 function getNowPlaying() { $.get('/nowplaying').done(update); }
 
 function checkUser() {
-	try{ return obj.now_playing_user=='Random' || $('#current-user').text().trim()==obj.now_playing_user; }
+	try{ return obj.now_playing_user=='Random' || currentUser==obj.now_playing_user; }
 	catch(err){ return false; }
 }
 
-function set_reset_key(state){
-	$("#reset_key").text(state?"{{getString1(204)}}":"{{getString1(68)}}");
-	if(state)$("#reset_key").addClass('boxedText');
-	else $("#reset_key").removeClass('boxedText');
-}
-
-function set_reset_speed(state){
-	$("#reset_speed").text(state?"{{getString1(205)}}":"{{getString1(199)}}");
-	if(state)$("#reset_speed").addClass('boxedText');
-	else $("#reset_speed").removeClass('boxedText');
-}
-
+// Vocal mode: 1 = music only, 2 = mixed, 3 = voice only
 function s3_go_to(n, do_action) {
 	if(n<1 || n>3) n=2;
-	for(var i=1; i<=3; i++){
-		if(i==n) toggleSwitch.classList.add('horizTranslate'+i);
-		else toggleSwitch.classList.remove('horizTranslate'+i);
-	}
+	for(var i=1; i<=3; i++) $("#s3t"+i).toggleClass('active', i==n);
 	if(do_action)
 		$.get("/play_vocal/"+(n==2?'mixed':(n==1?'nonvocal':'vocal')));
 }
+function s3_enable(n, val) { $("#s3t"+n).prop('disabled', val==0); }
+for(let i=1; i<=3; i++) $("#s3t"+i).click(()=>s3_go_to(i, true));
 
-function s3_enable(n, val) {
-	var s3t = document.getElementById("s3t"+n);
-	if(val!=0){
-		s3t.onclick = () =>{s3_go_to(n, true)};
-		s3t.style.color = '#ffffff';
-	} else {
-		s3t.onclick = null;
-		s3t.style.color = '#444444';
-	}
-}
-
-$(".control-box").hide();
-toggleSwitch = document.getElementsByClassName('redButton')[0];
-
-var slider = document.getElementById("transpose");
-var slider_prev_value = 0;
-var output = document.getElementById("semitones-label");
-if (slider) {
-	// Update the current slider value (each time you drag the slider handle)
-	slider.oninput = () => {output.innerHTML = getSemitonesLabel(slider.value);}
-	slider.oninput();
-	slider_prev_value = slider.value;
-}
-
-$("#transpose").change(() => {
-	var value = slider?slider.value:0;
-	if ( value != slider_prev_value ){
-		$.get("/transpose/" + value);
-		output.innerHTML = getSemitonesLabel(slider.value);
-		slider_prev_value = value
-	}
-});
-
-seektrack = $("#seektrack")[0];
+// Sliders
+$("#transpose").on('input', function(){ $("#semitones-label").text(getSemitonesLabel(this.value)); })
+	.on('change', function(){ $.get("/transpose/" + this.value); });
 seektrack.onchange = () => { $.get("/seek/" + seektrack.value); }
-seektrack.oninput = () => {$("#seektrack-val").text(getHHMMSS(seektrack.value));}
+seektrack.oninput = () => { $("#seektrack-val").text(getHHMMSS(seektrack.value)); }
+$("#playspeed").on('input', function(){ $("#playspeed-val").val((this.value/100).toFixed(2)); })
+	.on('change', function(){ $.get("/play_speed/" + this.value/100); });
 
-var speedtrack = document.getElementById("playspeed");
-speedtrack.onchange = () => {$.get("/play_speed/" + speedtrack.value/100);};
-speedtrack.oninput = () => {$("#playspeed-val").text(speedtrack.value/100);};
+// Transport
+$("#pause-btn").click(() => { $.get("/pause", (is_paused) => setPaused(is_paused=='true')); });
+$("#restart").click(() => { if (checkUser() || confirm("{{getString1(71)}}")) $.get("/restart"); });
+$("#skip").click(() => { if (checkUser() || confirm("{{getString1(72)}}")) $.get("/skip"); });
 
-$("#pause-resume").click(() => {
-	$.get("/pause", function (is_paused) {
-		if (is_paused=='true'){
-			$("#pause-resume").removeClass("icon-pause").addClass("icon-play");
-			$("#playing_gif").hide();$("#playing_png").show();
-		}else{
-			$("#pause-resume").removeClass("icon-play").addClass("icon-pause");
-			$("#playing_gif").show();$("#playing_png").hide();
-		}
-	});
-});
+// Volume
+$("#vol-up").click(() => { $.get("/vol_up", (vol) => $("#vol").val(vol)); });
+$("#vol-down").click(() => { $.get("/vol_down", (vol) => $("#vol").val(vol)); });
+$("#vol").on('keydown', function(e){ if(e.key=='Enter') this.blur(); })
+	.on('blur', function(){ $.get("/vol/"+(this.value||0), (vol) => $("#vol").val(vol)); volume_changing = false; });
 
-$("#vol-up").click(() => {
-	$.get("/vol_up", (vol) => {$("#vol").text(vol)});
-});
-
-$("#vol-down").click(() => {
-	$.get("/vol_down", (vol) => {$("#vol").text(vol)});
-});
-
-$("#vol").keypress(function (e) {
-	var ch = String.fromCharCode(e.which);
-	if(!("0123456789".includes(ch))) e.preventDefault();
-	if(ch=="\n" || ch=="\r") $(this).blur();
-});
-
-$("#vol").blur(() => {
-	$.get("/vol/"+$("#vol").text(), (vol) => {$("#vol").text(vol)});
-	volume_changing = false;
-});
-
-$("#restart").click(() => {
-	if (checkUser() || confirm("{{getString1(71)}}"))
-		$.get("/restart");
-});
-
-$("#skip").click(() => {if (checkUser() || confirm("{{getString1(72)}}")) {$.get("/skip");}});
-$("#delay-val").keypress(function (e) {
-	var ch = String.fromCharCode(e.which);
-	if(!("0123456789.-".includes(ch))) e.preventDefault();
-	if(ch=="\n" || ch=="\r") $(this).blur();
-});
-
-$("#subdelay-val").keypress(function (e) {
-	var ch = String.fromCharCode(e.which);
-	if(!("0123456789.-".includes(ch))) e.preventDefault();
-	if(ch=="\n" || ch=="\r") $(this).blur();
-});
-
-$("#playspeed-val").keypress(function (e) {
-	var ch = String.fromCharCode(e.which);
-	if(!("0123456789.".includes(ch))) e.preventDefault();
-	if(ch=="\n" || ch=="\r") $(this).blur();
-});
-
-$("#delay-val").blur(() => {
-	if($(this).text()=="") $(this).text("0");
-	$.get("/audio_delay/" + $(this).text());
-	audiodelay_typing=false;
-});
-
-$("#playspeed-val").blur(() => {
-	if($(this).text()=="") $(this).text("1");
-	$.get("/play_speed/" + $(this).text());
-	playspeed_typing=false;
-});
-
-$("#subdelay-val").blur(() => {
-	if($(this).text()=="") $(this).text("0");
-	$.get("/subtitle_delay/" + $(this).text());
-	subdelay_typing=false;
-});
+// Typed values: Enter or leaving the field applies them
+function bindTyped(sel, url, dflt, flag){
+	$(sel).on('keydown', function(e){ if(e.key=='Enter') this.blur(); })
+		.on('blur', function(){ $.get(url + (this.value==='' ? dflt : this.value)); window[flag] = false; });
+}
+bindTyped("#delay-val", "/audio_delay/", "0", "audiodelay_typing");
+bindTyped("#subdelay-val", "/subtitle_delay/", "0", "subdelay_typing");
+bindTyped("#playspeed-val", "/play_speed/", "1", "playspeed_typing");
 
 $("#subtitle-sel").click(() => {$.get("/toggle_subtitle");});
-$("#delay-inc").click(() => {$.get("/audio_delay/+", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
-$("#delay-dec").click(() => {$.get("/audio_delay/-", function(data){$("#delay-val").text(parseFloat(data).toFixed(2))});});
-$("#subdelay-inc").click(() => {$.get("/subtitle_delay/+", function(data){$("#subdelay-val").text(parseFloat(data).toFixed(1))});});
-$("#subdelay-dec").click(() => {$.get("/subtitle_delay/-", function(data){$("#subdelay-val").text(parseFloat(data).toFixed(1))});});
+$("#delay-inc").click(() => {$.get("/audio_delay/+", (d) => $("#delay-val").val(parseFloat(d).toFixed(2)));});
+$("#delay-dec").click(() => {$.get("/audio_delay/-", (d) => $("#delay-val").val(parseFloat(d).toFixed(2)));});
+$("#subdelay-inc").click(() => {$.get("/subtitle_delay/+", (d) => $("#subdelay-val").val(parseFloat(d).toFixed(1)));});
+$("#subdelay-dec").click(() => {$.get("/subtitle_delay/-", (d) => $("#subdelay-val").val(parseFloat(d).toFixed(1)));});
+
+// Help texts
 $("#audiodelay-info").click(() => {showNotification("{{getString1(60)}}","is-info",8000)});
 $("#subdelay-info").click(() => {showNotification("{{getString1(61)}}","is-info",8000)});
 $("#semitones-info").click(() => {showNotification("{{getString1(62)}}","is-info",10000)});
@@ -253,181 +236,4 @@ $("#playspeed-info").click(() => {showNotification("{{getString1(200)}}","is-inf
 $("#pytorch-logo").click(() => {showNotification("{{getString1(63)}}","is-info",12000)});
 
 getNowPlaying();
-if(isMobile)
-	$("#label-player-control")[0].outerHTML = '<h3 id="label-player-control">{{getString1(73)}}</h3>';
-
 </script>
-
-<header class="title">
-<style>
-hr, h1, h3, h4, p {
-	padding-top: 0em;
-	margin-top: 0em;
-	margin-bottom: 0em;
-}
-body {
-	line-height: 1;
-}
-.redButton.horizTranslate1 { -webkit-transition: -webkit-transform 0.1s linear; -webkit-transform: translateX(0px);}
-.redButton.horizTranslate2 { -webkit-transition: -webkit-transform 0.1s linear; -webkit-transform: translateX(60px);}
-.redButton.horizTranslate3 { -webkit-transition: -webkit-transform 0.1s linear; -webkit-transform: translateX(120px);}
-.legendText{display:inline-block; width:50px; padding-bottom:33px; cursor:default; user-select: none;}
-.boxedText { padding: 2px; border: 1px solid white; font-size:1.6rem; }
-.truncate {
-   overflow-x: hidden;
-   overflow-y: scroll;
-   text-overflow: ellipsis;
-   display: -webkit-box;
-   -webkit-line-clamp: 3; /* number of lines to show */
-           line-clamp: 3;
-   -webkit-box-orient: vertical;
-}
-</style>
-<h1>
-	{{getString1(74)}}
-	<img id="playing_gif" class="control-box hide" width="40" src="/static/images/now-playing.gif"/>
-	<img id="playing_png" class="control-box hide" width="40" src="/static/images/now-playing.png"/>
-</h1>
-</header>
-
-<div class="content">
-<p class="is-size-4 has-text-warning" id="now-playing"></p>
-
-<hr/>
-<h3>{{getString1(75)}}</h3>
-<p id="up-next" class="has-text-warning truncate" style="overflow:hidden;"></p>
-<hr/>
-
-<div class="has-background-black-bis box control-box" style="max-width: 500px">
-	<div class="is-flex" style="justify-content: space-between">
-		<h1 id="label-player-control">{{getString1(64)}}</h1>
-		<img id="pytorch-logo" width="40" src="/static/images/pytorch-logo.png" />
-		<div id="s3-outer" style="position:relative; width:150px; height:50px;">
-				<div id="s3-inner" style="background-color: #222D41; width:150px; height:28px; left:0; position:relative; top:20px; border-radius:14px;">
-						<div class="redButton horizTranslate2" style="width:16px; height:16px; background-color:#DB3D2B; border-radius:8px; position:relative; top:6px; left:6px;"></div>
-				</div>
-
-			 <div id="s3-text" class="is-flex" style="width:150px; display:inline-block; left:0; position:absolute; top:0;
-			 		font-family:Arial; font-size:12pt; text-align:center; justify-content: space-between">
-						<div id="s3t1" style="color:#ffffff" class="legendText" onclick="s3_go_to(1,true)">{{getString1(65)}}</div>
-						<div id="s3t2" style="color:#ffffff" class="legendText" onclick="s3_go_to(2,true)">{{getString1(66)}}</div>
-						<div id="s3t3" style="color:#ffffff" class="legendText" onclick="s3_go_to(3,true)">{{getString1(67)}}</div>
-				</div>
-		</div>
-	</div>
-
-	<p class="is-size-3">
-		<a title="{{getString1(79)}}" id="restart"><i class="icon icon-to-start"></i> </a>&nbsp;&nbsp;
-		<a title="{{getString1(80)}}"><i id="pause-resume" class="icon icon-pause"></i> </a>&nbsp;&nbsp;
-		<a title="{{getString1(81)}}" id="skip"><i class="icon icon-to-end"></i> </a>&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;
-		<span class="is-pulled-right">
-		<a title="{{getString1(82)}}" id="vol-down"><i class="icon icon-volume-down"></i> </a>
-		<a title="{{getString1(83)}}" id="vol" style="cursor: pointer" contenteditable="true" onfocus="volume_changing=true"> {{ volume }} </a>&nbsp;
-		<a title="{{getString1(84)}}" id="vol-up"><i class="icon icon-volume-up"></i> </a>
-		</span>
-	</p>
-
-	<div id="subdelay-box">
-		<div class="is-flex" style="justify-content: space-between">
-			<h4><span title="{{getString1(198)}}" id="subtitle-sel" style="cursor:pointer">{{getString1(78)}}</span><a id="subdelay-info"> <i class="icon icon-info-circled-1" title="Info"></i></a>:</h4>
-			<h4 title="{{getString1(85)}}" id="subdelay-dec" class="tabs hand" style="margin:0; color:red; font-weight: bold; font-size:x-large;" >&#x2296;</h4>
-			<h4 title="{{getString1(86)}}" id="subdelay-val" class="tabs hand" style="padding-top:2px; margin:0; contenteditable="true" onfocus="subdelay_typing=true">0</h4>
-			<h4 title="{{getString1(87)}}" id="subdelay-inc" class="tabs hand" style="margin:0; color:green; font-weight:bold;font-size:x-large;" >&#x2295;</h4>
-		</div>
-	</div>
-
-	<div class="is-flex" style="justify-content: space-between">
-		<h4>{{getString1(77)}}<a id="audiodelay-info"> <i class="icon icon-info-circled-1" title="Info"></i></a>:</h4>
-		<h4 title="{{getString1(88)}}" id="delay-dec" class="tabs hand" style="margin:0; color:red; font-weight: bold; font-size:x-large;" >&#x2296;</h4>
-		<h4 title="{{getString1(89)}}" id="delay-val" class="tabs hand" style="padding-top:2px; margin:0;" contenteditable="true" onfocus="audiodelay_typing=true">0</h4>
-		<h4 title="{{getString1(90)}}" id="delay-inc" class="tabs hand" style="margin:0; color:green; font-weight:bold;font-size:x-large;" >&#x2295;</h4>
-	</div>
-
-	<div class="is-flex" style="justify-content: space-between">
-		<div><h4>{{getString1(76)}}</h4></div>
-		<span style="padding-top:6px" id="seektrack-val">00:00:00</span>
-		<span style="padding-top:6px" id="seektrack-max">00:00:00</span>
-	</div>
-
-	<div style="width: 100%">
-		<div class="is-flex">
-			<input
-				id="seektrack"
-				type="range"
-				min="0"
-				max="{{ seektrack_max }}"
-				value="{{ seektrack_value }}"
-				width="300px"
-				class="transpose-slider"
-				style="width: 100%"
-				onmousedown="seektrack_seeking=true"
-				onmouseup="seektrack_seeking=false"
-				ontouchstart="seektrack_seeking=true"
-				ontouchend="seektrack_seeking=false"
-			/>
-		</div>
-	</div>
-	<!-- </div> -->
-
-	{% if show_transpose %}
-	<!-- <div class="has-background-black-bis box control-box" style="max-width: 500px"> -->
-	<div class="is-flex" style="justify-content: space-between; padding-top: 1em">
-		<div>
-			<h4 id="reset_key" title="{{getString1(203)}}" style="cursor: pointer" onclick="$.get('/transpose/0')">{{getString1(68)}}</h4>
-		</div>
-		<div class="is-flex">
-			<h4 id="semitones-label"></h4>
-			<a id="semitones-info"> <i class="icon icon-info-circled-1" title="Info"></i></a>
-		</div>
-	</div>
-
-	<div style="width: 100%">
-		<div class="is-flex">
-			<input
-				id="transpose"
-				type="range"
-				min="-12"
-				max="12"
-				value="{{ transpose_value }}"
-				width="300px"
-				class="transpose-slider"
-				style="width: 100%"
-				onmousedown="transpose_seeking=true"
-				onmouseup="transpose_seeking=false"
-				ontouchstart="transpose_seeking=true"
-				ontouchend="transpose_seeking=false"
-			/>
-		</div>
-	</div>
-	
-	<div class="is-flex" style="justify-content: space-between; padding-top: 1em">
-		<div>
-			<h4 id="reset_speed" title="{{getString1(201)}}" class="hand" onclick="$.get('/play_speed/1')">{{getString1(199)}}</h4>
-		</div>
-		<div class="is-flex">
-			<h4><span id="playspeed-val" title="{{getString1(202)}}" class="hand" contenteditable="true" onfocus="playspeed_typing=true"></span>x</h4>
-			<a id="playspeed-info"> <i class="icon icon-info-circled-1" title="Info"></i></a>
-		</div>
-	</div>
-
-	<div style="width: 100%">
-		<div class="is-flex">
-			<input
-				id="playspeed"
-				type="range"
-				min="80"
-				max="120"
-				value="{{ play_speed }}"
-				width="300px"
-				class="transpose-slider"
-				style="width: 100%"
-				onmousedown="playspeed_seeking=true"
-				onmouseup="playspeed_seeking=false"
-				ontouchstart="playspeed_seeking=true"
-				ontouchend="playspeed_seeking=false"
-			/>
-		</div>
-	</div>
-	{% endif %}
-</div>
-</div>

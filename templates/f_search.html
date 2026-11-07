@@ -1,237 +1,147 @@
-<script>
-var download_url = "";
-function download_ended(){
-  $("#direct-download-button").removeClass("is-loading");
-  $("#download-button").removeClass("is-loading");
-}
-$("#search_result_selector").focus();
-$("#download-button").click(function () {
-  if (!$("#download-button").is('[disabled=disabled]')) {
-    $("#download-button").addClass("is-loading");
-  }
-});
+<div class="d-flex align-items-center justify-content-between mb-3">
+	<h1 class="page-title">{{getString1(117)}}</h1>
+	<button class="btn btn-soft btn-round" title="{{getString1(233)}}" onclick="ASR('searchASR()')"><i class="bi bi-mic-fill"></i></button>
+</div>
 
-$("#direct-download-button").click(function () {
-  if (!$("#direct-download-button").is('[disabled=disabled]')) {
-    $("#direct-download-button").addClass("is-loading");
-  }
-});
+<!-- Search box -->
+<div class="input-group input-group-lg mb-2">
+	<span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search"></i></span>
+	<input class="form-control border-start-0 ps-0" list="suggestions" id="search-box" type="search" value="{{search_string}}"
+		autocomplete="off" enterkeyhint="search" placeholder="{{getString1(118)}}">
+	<datalist id="suggestions"></datalist>
+	<button class="btn btn-grad px-3" id="add-queue-link" hidden><i class="bi bi-plus-lg"></i> {{getString1(119)}}</button>
+	<button class="btn btn-grad px-3" id="search-link"><span class="spinner-border spinner-border-sm" hidden></span> {{getString1(118)}}</button>
+</div>
+<div class="d-flex justify-content-between align-items-center small mb-1">
+	<div class="form-check form-switch m-0">
+		<input class="form-check-input" type="checkbox" role="switch" id="search-karaoke" {% if search_karaoke %}checked{% endif %}>
+		<label class="form-check-label" for="search-karaoke">{{getString1(120)}}</label>
+	</div>
+	<a class="link-secondary" data-bs-toggle="collapse" href="#advanced-settings" role="button"><i class="bi bi-sliders"></i> {{getString1(121)}}</a>
+</div>
+<p class="small text-secondary mb-3">{{getString1(122)}} {{getString1(123)}}</p>
 
-$('.download-direct').submit(function(){
-  download_url = $(this).find('[name=song_url]').val()
-  $.post($(this).attr('action'), $(this).serialize(), function(msg) {
-    showNotification(msg);
-  }, 'text');
-  return false;
-});
+<!-- Download options (shared by search results and direct URL) -->
+<div class="collapse" id="advanced-settings">
+	<div class="ok-card p-3 mb-3">
+		<form class="download-direct">
+			<label class="form-label small" for="direct-download-url">{{getString1(124)}}</label>
+			<div class="input-group">
+				<input class="form-control" id="direct-download-url" type="url" name="song_url" placeholder="https://www.youtube.com/watch?v=…" required>
+				<button class="btn btn-soft" id="direct-download-button" type="submit"><i class="bi bi-download"></i> {{getString1(127)}}</button>
+			</div>
+		</form>
+	</div>
+</div>
+<div class="d-flex flex-wrap gap-3 small mb-3" id="dl-options">
+	<div class="form-check form-switch m-0" title="{{getString1(207)}}">
+		<input class="form-check-input" type="checkbox" role="switch" id="opt-enqueue" checked><label class="form-check-label" for="opt-enqueue">{{getString1(125)}}</label>
+	</div>
+	<div class="form-check form-switch m-0" title="{{getString1(209)}}">
+		<input class="form-check-input" type="checkbox" role="switch" id="opt-hq" {{'checked' if high_quality else ''}}><label class="form-check-label" for="opt-hq">{{getString1(206)}}</label>
+	</div>
+	<div class="form-check form-switch m-0" title="{{getString1(208)}}">
+		<input class="form-check-input" type="checkbox" role="switch" id="opt-subs"><label class="form-check-label" for="opt-subs">{{getString1(126)}}</label>
+	</div>
+</div>
 
-//START SELECTIZE CHANGES
-
-//if enter key press, by default search button is click
-$(document).keypress(
-  function (event) {
-    if (event.which == '13') {
-      event.preventDefault();
-
-      if ($(".search-selectize .selectize-input input").val())
-        $('#search-link').trigger("click");
-      else if ($('.search-selectize').find(":selected").text())
-        $('#add-queue-link').trigger("click");
-    }
-  });
-
-$("#add-queue-link").hide();
-$('#search-link').click((e) => {
-  $("#search-link").addClass("is-loading");
-  var search_term = $("#search-box").val();
-  var include_non_karaoke = $("#search-karaoke").is(":checked");
-  if (search_term)
-    post_switch("/f_search", {search_string:search_term, non_karaoke:include_non_karaoke});
-});
-$('#add-queue-link').click((e) => {
-  $.post("/enqueue", {song: suggests[$('#search-box').val()], user: currentUser}).then((data) => {
-    var obj = JSON.parse(data);
-    if (obj.success)
-      showNotification("{{getString1(115)}}" + obj.song, "is-success")
-    else
-      showNotification("{{getString1(116)}}" + obj.song, "is-danger")
-  });
-});
-
-//END SELECTIZE CHANGES
-
-$('#youtube-link').attr('href', $('#search_result_selector').val());
-$('#youtube-link').text($('#search_result_selector').val());
-
-//get youtube thumbnail based on ID
-i = -1;
-changeImage();
-
-$(document).on('change', '#search_result_selector', function () {
-  var url = $('#search_result_selector').val();
-  $('#youtube-link').attr('href', url);
-  $('#youtube-link').text(url);
-  changeImage();
-});
-//allow click of images
-$('#youtube-thumb').click(function (e) { changeImage(); });
-timer = setInterval(function () { $('#youtube-thumb').trigger('click'); }, 2000);
-
-$('#advanced-settings').hide()
-
-// handle show advanced state
-$('#show-advanced').change(() => {
-  if ($('#show-advanced').is(":checked"))
-    $('#advanced-settings').show()
-  else
-    $('#advanced-settings').hide()
-});
-
-$(".song-added-by").val(currentUser)
-
-function changeImage() {
-  var next = (++i % 4);
-  var youtube_id = $('#search_result_selector').find(':selected').data('ytid');
-  var fn = (next == 0) ? "default" : next;
-  var img_src = 'https://img.youtube.com/vi/' + youtube_id + '/mq' + fn + '.jpg'
-  $('#youtube-thumb').attr("src", img_src);
-}
-function countChars(s){
-  var sum=0;
-  for(var x=0; x<s.length; x++)
-    sum += s.charCodeAt(x)>127?2:1;
-  return sum;
-}
-var old_text, suggests;
-function set_suggests(obj){
-  suggests = obj;
-  var html = '';
-  for(var i of Object.keys(obj))
-    html += `<option value="${i}">`;
-  $('#suggestions').html(html);
-}
-function searchASR(){
-  var blob = new Blob(audios, { type: "audio/webm" });
-	const req = new XMLHttpRequest();
-	req.open("POST", '/get_ASR', true);
-  req.onload = (e)=>{
-    $('#search-box').val(e.target.responseText);
-    $('#search-box').trigger('input');
-    $('#search-box').focus();
-  };
-	req.send(blob);
-}
-$('#search-box').on('input', (ev) => {
-  if(ev.target.value!=old_text && countChars(ev.target.value)>=4){
-    old_text = ev.target.value;
-    $.get('/suggest?q='+ev.target.value).then((data) => { set_suggests(JSON.parse(data)); });
-    if(suggests!=null && old_text in suggests){
-      $('#add-queue-link').show();
-      $('#search-link').hide();
-    }else{
-      $('#add-queue-link').hide();
-      $('#search-link').show();
-    }
-  }
-});
-if(old_text){
-  $('#search-box').val(old_text);
-  if(suggests) set_suggests(suggests);
-}
-</script>
-
-<header class="title">
-<h1>{{getString1(117)}}<i class="icon icon-mic-1 hand" style="float: right; display: inline; transform:translateX(-50%)" 
-  title="{{getString1(233)}}" onclick="ASR('searchASR()')"></i></h1>
-</header>
-
-<div class="content">
-<div>
-  <div class="field" id="container_queue_form">
-    <div id="search-field" class="field has-addons" style="margin-bottom: 5px">
-      <div class="control" style="width:100%">
-        <input class="input" list="suggestions" id="search-box" type="text" value="{{search_string}}" autocomplete="off">
-        <datalist id="suggestions"></datalist>
-      </div>
-      <div class="control">
-        <a class="button is-warning" id="search-link">{{getString1(118)}}</a>
-        <a class="button is-info" id="add-queue-link">{{getString1(119)}}</a>
-      </div>
-      <input class="song-added-by" type="hidden" name="song-added-by" />
-    </div>
-    <div class="control has-text-right is-flex" style="justify-content: space-between">
-      <label class="checkbox is-size-7">
-        <input type="checkbox" id="search-karaoke" {% if search_karaoke %}checked{% endif %} name="search-karaoke">
-        {{getString1(120)}}
-      </label>
-      <label class="checkbox is-size-7">
-        <input type="checkbox" id="show-advanced">
-        {{getString1(121)}}
-      </label>
-    </div>
-    
-    <div>
-      <p class="help" style="margin-top: 15px">{{getString1(122)}}</p>
-      <p class="help">{{getString1(123)}}</p>
-    </div>
-  </div>
-
-  <div id="advanced-settings" class="box has-background-black-bis" style="margin-top: 10px">
-    <div class="control">
-      <div class="label">{{getString1(124)}}</div>
-      <form class="download-direct" action="/download" method="post">
-        <input class="input" id="direct-download-url" type="text" name="song_url" />
-        <input class="song-added-by" type="hidden" name="song_added_by" />
-        <div class="field" style="margin-top: 5px; justify-content: space-evenly; display: flex;">
-          <label class="checkbox" title="{{getString1(207)}}"><input type="checkbox" checked name="enqueue">{{getString1(125)}}</label>
-          <label class="checkbox" title="{{getString1(209)}}"><input type="checkbox" name="high_quality" {{'checked' if high_quality else ''}}>{{getString1(206)}}</label>
-          <label class="checkbox" title="{{getString1(208)}}"><input type="checkbox" name="include_subtitles">{{getString1(126)}}</label>
-        </div>
-        <div class="has-text-right" style="margin-top: 5px">
-          <button class="button is-small is-rounded" id="direct-download-button" type="submit">{{getString1(127)}}</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <hr>
-
-  <div class="field is-hidden">
-    <form action="/search" method="get">
-      <input id="search_string" type="text" name='search_string' />
-      <input type="text" id="non_karaoke" name="non_karaoke" />
-    </form>
-  </div>
-
-  <div id="searching_loader" class="control is-loading is-hidden">{{getString1(128)}}
-    <small><i>'<span id="search_term"></span>'</i></small></div>
-  {% if search_results %}
-  <iframe name="dummyframe" id="dummyframe" style="display: none;"></iframe>
-  <div class="field">
-    <form class="download-direct" action="/download" method="post">
-      <label class="label">{{getString1(129)}}<small><i>'{{search_string}}'</i></small></label>
-      <div class="field select">
-        <select id="search_result_selector" name='song_url'>
-          {% for title,url,id,dur in search_results %}
-          <option data-ytID='{{id}}' value='{{url}}' title="{{getString1(232)+dur}}">{{title}}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <input class="song-added-by" type="hidden" name="song_added_by" />
-      <p class="help">{{getString1(130)}}</p>
-      <p> {{getString1(131)}}<a target="_blank" id='youtube-link' href='' style="font-size: 80%;"></a> </p>
-      <p class="has-text-centered-mobile"> <img id='youtube-thumb'> </p>
-      <div class="field">
-        <label class="checkbox"><input type="checkbox" checked name="enqueue">{{getString1(125)}}</label>&nbsp;
-        <label class="checkbox" title="{{getString1(209)}}"><input type="checkbox" name="high_quality" {{'checked' if high_quality else ''}}>{{getString1(206)}}</label>
-        <label class="checkbox"><input type="checkbox" name="include_subtitles">{{getString1(126)}}</label>
-      </div>
-      <div class="field">
-        <button class="button is-success is-rounded" id="download-button" type="submit">{{getString1(127)}}</button>
-      </div>
-    </form>
-  </div>
+{% if search_results %}
+<div class="section-label mb-2">{{getString1(129)}} “{{search_string}}”</div>
+<div class="list-group">
+	{% for title,url,id,dur in search_results %}
+	<div class="list-group-item d-flex align-items-center gap-3">
+		<a href="{{url}}" target="_blank" rel="noopener"><img class="result-thumb" loading="lazy" src="https://img.youtube.com/vi/{{id}}/mqdefault.jpg" alt=""></a>
+		<div class="flex-grow-1" style="min-width:0">
+			<div class="text-truncate-2">{{title}}</div>
+			<div class="small text-secondary">{{dur}}</div>
+		</div>
+		<button class="btn btn-grad btn-round btn-dl flex-none" title="{{getString1(127)}}" data-url="{{url}}">
+			<i class="bi bi-download"></i><span class="spinner-border spinner-border-sm"></span>
+		</button>
+	</div>
+	{% endfor %}
 </div>
 {% endif %}
 
-</div>
+<script>
+function startDownload(url, $btn){
+	$.post('/download', {
+		song_url: url,
+		song_added_by: currentUser,
+		...($('#opt-enqueue').is(':checked') ? {enqueue: 'on'} : {}),
+		...($('#opt-hq').is(':checked') ? {high_quality: 'on'} : {}),
+		...($('#opt-subs').is(':checked') ? {include_subtitles: 'on'} : {}),
+	}, (msg) => showNotification(msg, 'is-info', 5000), 'text');
+	$btn.addClass('loading').prop('disabled', true);
+}
+$('.btn-dl').click(function(){ startDownload($(this).data('url'), $(this)); });
+$('.download-direct').submit(function(){
+	startDownload($('#direct-download-url').val(), $('#direct-download-button'));
+	return false;
+});
+
+function doSearch(){
+	var search_term = $("#search-box").val();
+	if (!search_term) return;
+	$("#search-link .spinner-border").prop('hidden', false);
+	post_switch("/f_search", {search_string: search_term, non_karaoke: $("#search-karaoke").is(":checked")});
+}
+function doQueue(){
+	$.post("/enqueue", {song: suggests[$('#search-box').val()], user: currentUser}).then((data) => {
+		var obj = JSON.parse(data);
+		if (obj.success)
+			showNotification("{{getString1(115)}}" + obj.song, "is-success")
+		else
+			showNotification("{{getString1(116)}}" + obj.song, "is-danger")
+	});
+}
+$('#search-link').click(doSearch);
+$('#add-queue-link').click(doQueue);
+$('#search-box').on('keydown', function(e){
+	if(e.key != 'Enter') return;
+	e.preventDefault();
+	if(suggests && this.value in suggests) doQueue(); else doSearch();
+});
+
+function countChars(s){
+	var sum=0;
+	for(var x=0; x<s.length; x++)
+		sum += s.charCodeAt(x)>127?2:1;
+	return sum;
+}
+var old_text, suggests;
+function set_suggests(obj){
+	suggests = obj;
+	var html = '';
+	for(var i of Object.keys(obj))
+		html += `<option value="${esc(i)}">`;
+	$('#suggestions').html(html);
+	updateQueueButton();
+}
+function updateQueueButton(){
+	var matched = suggests!=null && $('#search-box').val() in suggests;
+	$('#add-queue-link').prop('hidden', !matched);
+}
+function searchASR(){
+	var blob = new Blob(audios, { type: "audio/webm" });
+	const req = new XMLHttpRequest();
+	req.open("POST", '/get_ASR', true);
+	req.onload = (e)=>{
+		$('#search-box').val(e.target.responseText);
+		$('#search-box').trigger('input');
+		$('#search-box').focus();
+	};
+	req.send(blob);
+}
+$('#search-box').on('input', (ev) => {
+	if(ev.target.value!=old_text && countChars(ev.target.value)>=4){
+		old_text = ev.target.value;
+		$.get('/suggest?q='+encodeURIComponent(ev.target.value)).then((data) => { set_suggests(JSON.parse(data)); });
+	}
+	updateQueueButton();
+});
+if(old_text && !$('#search-box').val()){
+	$('#search-box').val(old_text);
+	if(suggests) set_suggests(suggests);
+}
+</script>

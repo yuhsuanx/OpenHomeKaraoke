@@ -1,115 +1,73 @@
-<header class="title">
-<h1>
-  {% if letter %}
-    {{title}}: "{{ letter.upper() }}"
-  {% else %}
-    {{title}}
-  {% endif %}
-</h1>
-<style>
-  #alpha-bar {
-    padding: 5px 10px;
-    border-radius: 4px;
-    margin-bottom: 10px;
-    position: sticky;
-    display: flex;
-    justify-content: space-between;
-    top: 3px;
-    z-index: 20;
-  }
-  @media screen and (max-width: 500px) {
-    #alpha-bar {
-      font-size: 13px;
-      position: fixed;
-      display: flex;
-      align-items: center;
-      right: 8px;
-      top: 15px;
-      flex-direction: column;
-      max-width: 22px;
-      height: 95vh;
-    }
-    .mobile-hide {
-      visibility: hidden;
-    }
-  }
-</style>
-</header>
-
-<div class="content">
-<p>
-  {{ sort_order_text }} |
-  {% if sort_order == "Alphabetical" %}
-  <a onclick="Cookies.set('sort', 'date');switch_pane('/f_browse')">{{getString1(95)}}</a>
-  {% endif %}
-  {% if sort_order == "Date" %}
-  <a onclick="Cookies.set('sort', 'alpha');switch_pane('/f_browse')">{{getString1(96)}}</a>
-  {% endif %}
-</p>
-
-<div id="alpha-bar" class="has-background-dark mobile-hide" >
-  <a onclick="switch_pane('/f_browse?letter=numeric')">#</a>
-  {% for letter in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']  %}
-  <a onclick="switch_pane('/f_browse?letter={{letter}}')">{{letter.upper()}}</a>
-  {% endfor %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+	<h1 class="page-title">{{title}}{% if letter %} <span class="text-secondary">· {{ '#' if letter == 'numeric' else letter.upper() }}</span>{% endif %}</h1>
+	<div class="btn-group seg" role="group">
+		<button class="btn btn-sm btn-soft {{'active' if sort_order == 'Alphabetical'}}" title="{{getString1(96)}}"
+			onclick="Cookies.set('sort', 'alpha');switch_pane('/f_browse')"><i class="bi bi-sort-alpha-down"></i></button>
+		<button class="btn btn-sm btn-soft {{'active' if sort_order == 'Date'}}" title="{{getString1(95)}}"
+			onclick="Cookies.set('sort', 'date');switch_pane('/f_browse')"><i class="bi bi-clock-history"></i></button>
+	</div>
 </div>
 
-{{ pagination.links }}
-{{ pagination.info }}
-<table>
-  {% for song in songs %}
-  <tr value='{{ song }}'>
-    <td width="20px" style="padding: 5px 0px">{{loop.index + pagination.skip}}</td>
-    <td id={{filename_from_path(song)[0].lower()}} width="20px" style="padding: 5px 0px">
-      <a class='add-song-link has-text-weight-bold has-text-success' title="{{getString1(97)%filename_from_path(song)}}"
-        href="{{url_for('enqueue')}}?song={{url_escape(song.encode('utf-8'))}}&user="><i class="icon icon-list-add"></i> </a>
-    </td>
-    <td>{{filename_from_path(song)}}</td>
-    {% if admin %}
-      <td width="20px">
-        <a class='edit-button' onclick="onEdit('/f_edit?song={{url_escape(song.encode())}}')"
-          title="{{getString1(104)}}"><i class="icon icon-edit-1"></i> </a>
-      </td>
-    {% endif %}
-    {% endfor %}
-</table>
-{{ pagination.links }}
+<div class="input-group mb-2">
+	<span class="input-group-text bg-transparent border-end-0"><i class="bi bi-funnel"></i></span>
+	<input id="lib-filter" type="search" class="form-control border-start-0 ps-0" placeholder="{{getString1(118)}}" autocomplete="off">
 </div>
+
+<div class="chips mb-3">
+	<a class="chip {{'active' if not letter}}" onclick="switch_pane('/f_browse')"><i class="bi bi-asterisk"></i></a>
+	<a class="chip {{'active' if letter == 'numeric'}}" onclick="switch_pane('/f_browse?letter=numeric')">#</a>
+	{% for l in 'abcdefghijklmnopqrstuvwxyz' %}
+	<a class="chip {{'active' if letter == l}}" onclick="switch_pane('/f_browse?letter={{l}}')">{{l.upper()}}</a>
+	{% endfor %}
+</div>
+
+<div class="small text-secondary mb-2">{{ sort_order_text }} · {{ pagination.info }}</div>
+
+<div class="list-group" id="song-list">
+	{% for song in songs %}
+	<div class="list-group-item d-flex align-items-center gap-3 song-row">
+		<span class="q-num">{{loop.index + pagination.skip}}</span>
+		<div class="flex-grow-1 text-truncate-2 song-name">{{filename_from_path(song)}}</div>
+		{% if admin %}
+		<button class="btn btn-sm btn-soft btn-round flex-none" title="{{getString1(104)}}"
+			onclick="onEdit('/f_edit?song={{url_escape(song.encode())}}')"><i class="bi bi-pencil"></i></button>
+		{% endif %}
+		<button class="btn btn-sm btn-grad btn-round flex-none add-song-link" title="{{getString1(97)%filename_from_path(song)}}"
+			data-href="{{url_for('enqueue')}}?song={{url_escape(song.encode('utf-8'))}}&user="><i class="bi bi-plus-lg"></i></button>
+	</div>
+	{% endfor %}
+</div>
+
+<div class="mt-3 d-flex justify-content-center" id="pager">{{ pagination.links }}</div>
 
 <script>
-if ($(window).width() <= 500) {
-  $(document).scroll(function() {
-    var y = $(this).scrollTop();
-    if (y > 100) {
-      $('#alpha-bar').removeClass("mobile-hide");
-      $('#alpha-bar').fadeIn();
-    } else {
-      $('#alpha-bar').fadeOut();
-    }
-  });
-}
+$('.add-song-link').click(function(e) {
+	var $btn = $(this);
+	$.get($btn.data('href') + encodeURIComponent(currentUser), function (data) {
+		var obj = JSON.parse(data);
+		if (obj.success){
+			showNotification("{{getString1(93)}}" + obj.song, "is-success");
+			$btn.find('.bi').removeClass('bi-plus-lg').addClass('bi-check-lg');
+		} else
+			showNotification("{{getString1(94)}}" + obj.song, "is-danger");
+	});
+});
 
-$('a.add-song-link').click(function(e) {
-  e.preventDefault();
-  var user = Cookies.get("user") 
-  if (!user) {
-    let name = window.prompt("{{getString1(92)}}");
-    if (name) {
-      Cookies.set("user", name, { expires: 3650 })
-      user = Cookies.get("user") 
-    }
-  }
-  $.get(this.href + encodeURIComponent(user), function (data) {
-    var obj = JSON.parse(data);
-    if (obj.success)
-      showNotification("{{getString1(93)}}" + obj.song, "is-success")
-    else
-      showNotification("{{getString1(94)}}" + obj.song, "is-danger")
-  })
-})
+$('#lib-filter').on('input', function(){
+	var q = this.value.trim().toLowerCase();
+	$('.song-row').each(function(){
+		$(this).toggleClass('d-none', !!q && !$(this).find('.song-name').text().toLowerCase().includes(q));
+	});
+});
+
+// keep pagination inside the single-page app
+$('#pager a.page-link').click(function(e){
+	e.preventDefault();
+	var href = $(this).attr('href');
+	if(href) switch_pane('/f_browse' + href.substring(href.indexOf('?')));
+});
 
 function onEdit(url){
-  $.get(url).done((data)=>{$('#container').html(data)});
+	$.get(url).done((data)=>{$('#container').html(data)});
 }
-
 </script>

@@ -1,150 +1,91 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en" data-bs-theme="dark">
 <head>
+	<meta charset="utf-8">
 	{% if title %}
 	<title>{{site_title}} - {{ title }}</title>
 	{% else %}
-	<title>{{site_title}}</title>
+	<title>{{getString1(136)}}</title>
 	{% endif %}
-	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+	<meta name="theme-color" content="#0d0f14">
+	<link rel="icon" type="image/png" href="/static/images/microphone.png">
+	<link rel="stylesheet" href="/static/bootstrap/bootstrap.min.css">
+	<link rel="stylesheet" href="/static/bootstrap-icons/bootstrap-icons.min.css">
+	<link rel="stylesheet" href="/static/app.css">
 	<script src="/static/jquery-3.3.1.min.js"></script>
 	<script src="/static/jquery-ui.min.js"></script>
 	<script src="/static/js.cookie-2.2.1.min.js"></script>
-	<script src="/static/lodash.min.js"></script>
 	<script src="/static/siriwave.umd.min.js"></script>
-	<link rel="stylesheet" href="/static/jquery-ui.min.css">
-	<link rel="stylesheet" href="/static/bulma-dark.css">
-	<link rel="stylesheet" href="/static/custom.css">
-	<link rel="icon" type="image/png" href="/static/images/microphone.png">
-	<link rel="stylesheet" href="/static/fontello/css/fontello.css">
+	<script src="/static/bootstrap/bootstrap.bundle.min.js"></script>
 </head>
 
-<style>
-.dark_overlay{
-	position: fixed; top: 0%; left: 0%; width: 100%; height: 100%; background-color: black; z-index:100; -moz-opacity: 0.8;
-	opacity:.8; display: none; filter: alpha(opacity=80);
-}
-.above_overlay{ position:fixed; width:80%; height:40%; left:50%; top: 50%; transform: translate(-50%, -50%); z-index: 200; display: none; }
-.navbar-item > i { margin-right: 2px; font-size: 24px; }
-.notification { position: fixed; width: 500px; bottom: 5px; left: 50%; margin-left: -250px; z-index: 20; }
-.current-user { position: fixed; padding: 3px; bottom: 5px; right: 10px; }
-tr:nth-child(even) { background-color: rgb(50, 55, 55); }
-@media screen and (max-width: 500px) {
-	.navbar-brand > .navbar-item > span { display: none; }
-	.notification { position: fixed; width: 100%; bottom: 5px; left: 0px; margin-left: 0px; }
-	body { min-height: 120vh; }
-}
-.hide {display: none;}
-.hand {cursor: pointer;}
-rbutton {
-	margin: 4px;
-	align-items: center;
-	appearance: none;
-	background-color: #3EB2FD;
-	background-image: linear-gradient(1deg, #4F58FD, #149BF3 99%);
-	background-size: calc(100% + 20px) calc(100% + 20px);
-	border-radius: 100px;
-	border-width: 0;
-	box-shadow: none;
-	box-sizing: border-box;
-	color: #FFFFFF;
-	cursor: pointer;
-	display: inline-flex;
-	font-family: CircularStd, sans-serif;
-	font-size: 1.2rem;
-	height: auto;
-	justify-content: center;
-	line-height: 1.2;
-	padding: 6px 20px;
-	position: relative;
-	text-align: center;
-	text-decoration: none;
-	transition: background-color .2s, background-position .2s;
-	user-select: none;
-	-webkit-user-select: none;
-	touch-action: manipulation;
-	vertical-align: middle;
-	white-space: nowrap;
-	transform:scale(1.2);
-}
-rbutton:active,
-rbutton:focus {outline: none;}
-rbutton:hover {background-position: -20px -20px;}
-rbutton:focus:not(:active) {box-shadow: #28aaff40 0 0 0 .125em;}
-</style>
-
 <body>
-	<div id="ASR" class="asr dark_overlay"></div>
-	<div id="ASRpanel" class="asr above_overlay">
-		<h1 style="color: white; font-size: x-large; margin: 0.5em; line-height: 1.5; font-weight: bold;">{{getString1(213)}}</h1>
-		<div id="waveform" style="width:100%; height: 50%; border-radius: 2em; border: solid 4px blue; background-color: #00000080;"></div>
-		<h1 style="font-size: 64pt; justify-content: space-around; display: flex;" >
-			<span class="hand" style="color:lime" onclick="use_recorded=true;recorder.stop();">☑</span>
-			<span class="hand" style="color:red" onclick="recorder.stop();">☒</span>
-		</h1>
-	</div>
-	<div id="ASRselect" class="above_overlay" style="font-size: x-large; line-height: 2; overflow: scroll; background-color:darkviolet; height: fit-content;padding: 5%;">
-		<b>{{getString1(228)}}</b>
-		<div id="ASRlist"></div>
-		<div style="justify-content: space-around; display: flex; margin-top:0.5em;">
-			<rbutton onclick="addSelected(); $('#ASRselect').hide(); $('#ASR').hide()">{{getString1(231)}}</rbutton>
-			<rbutton onclick="$('#ASRselect').hide(); $('#ASR').hide()">{{getString1(230)}}</rbutton>
+	<!-- Top bar -->
+	<header class="topbar">
+		<div class="container page d-flex align-items-center gap-2 py-2">
+			<a class="brand d-flex align-items-center gap-2 me-auto" onclick="switch_pane('/f_home')" role="button">
+				<i class="bi bi-mic-fill fs-4"></i><span class="d-none d-sm-inline">{{getString1(136)}}</span>
+			</a>
+			<nav class="top-tabs nav d-none d-md-flex">
+				<a id="home" class="nav-link" onclick="switch_pane('/f_home')" role="button">{{getString1(183)}}</a>
+				<a id="queue" class="nav-link" onclick="switch_pane('/f_queue')" role="button">{{getString1(112)}}</a>
+				<a id="search" class="nav-link" onclick="switch_pane('/f_search')" role="button">{{getString1(118)}}</a>
+				<a id="browse" class="nav-link" onclick="switch_pane('/f_browse')" role="button">{{getString1(98)}}</a>
+			</nav>
+			<button id="speak" class="icon-btn" onclick="ASR()" title="{{getString1(212)}}"><i class="bi bi-soundwave"></i></button>
+			<button id="current-user" class="icon-btn user-chip" title="{{getString1(134)}}"><i class="bi bi-person-circle"></i><span></span></button>
+			<button id="current-lang" class="icon-btn" title="{{getString1(184)}}"><i class="bi bi-translate"></i></button>
+			<button id="info" class="icon-btn" onclick="switch_pane('/f_info')" title="{{getString1(193)}}"><i class="bi bi-gear"></i></button>
+		</div>
+	</header>
+
+	<!-- Pane content -->
+	<main class="container page py-3" id="container"></main>
+
+	<!-- Bottom tab bar (phones) -->
+	<nav class="tabbar d-md-none">
+		<a id="home-tab" onclick="switch_pane('/f_home')"><i class="bi bi-play-circle"></i>{{getString1(183)}}</a>
+		<a id="queue-tab" onclick="switch_pane('/f_queue')"><i class="bi bi-list-ol"></i>{{getString1(112)}}</a>
+		<a id="search-tab" onclick="switch_pane('/f_search')"><i class="bi bi-search"></i>{{getString1(118)}}</a>
+		<a id="browse-tab" onclick="switch_pane('/f_browse')"><i class="bi bi-collection-play"></i>{{getString1(98)}}</a>
+	</nav>
+
+	<!-- Notifications -->
+	<div class="toast-wrap" id="toasts"></div>
+
+	<!-- Speech input overlay -->
+	<div id="ASR" class="asr asr-backdrop"></div>
+	<div id="ASRpanel" class="asr asr-panel ok-card p-4">
+		<h5 class="mb-3">{{getString1(213)}}</h5>
+		<div id="waveform"></div>
+		<div class="d-flex gap-2 mt-3">
+			<button class="btn btn-grad flex-fill" onclick="use_recorded=true;recorder.stop();"><i class="bi bi-check-lg"></i> OK</button>
+			<button class="btn btn-soft flex-fill" onclick="recorder.stop();"><i class="bi bi-x-lg"></i> {{getString1(230)}}</button>
 		</div>
 	</div>
-	<nav class="navbar" role="navigation" aria-label="main navigation" style="position: fixed; top:0; width: 100%; overflow: hidden;">
-		<div class="navbar-brand" id="brand" style="padding-left: 10px">
-			<a id="home" class="navbar-item" onclick="switch_pane('/f_home')">
-				<i class="icon icon-home-2" title="{{getString1(183)}}"></i>
-				<span>{{getString1(183)}}</span>
-			</a>
-			<a id="queue" class="navbar-item" onclick="switch_pane('/f_queue')">
-				<i class="icon icon-list-numbered" title="{{getString1(112)}}"></i>
-				<span>{{getString1(112)}}</span>
-			</a>
-			<a id="search" class="navbar-item" onclick="switch_pane('/f_search')">
-				<i class="icon icon-search-1" title="{{getString1(118)}}"></i>
-				<span>{{getString1(118)}}</span>
-			</a>
-			<a id="browse" class="navbar-item" onclick="switch_pane('/f_browse')">
-				<i class="icon icon-folder-open-empty" title="{{getString1(98)}}"></i>
-				<span>{{getString1(98)}}</span>
-			</a>
-			<a id="speak" class="navbar-item" style="margin-left: auto;" onclick="ASR()">
-				<i class="icon" title="{{getString1(212)}}">🗣</i>
-				<span>{{getString1(212)}}</span>
-			</a>
-			<a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-				<span aria-hidden="true"></span>
-				<span aria-hidden="true"></span>
-				<span aria-hidden="true"></span>
-			</a>
+	<div id="ASRselect" class="asr-panel ok-card p-4">
+		<h5 class="mb-3">{{getString1(228)}}</h5>
+		<div id="ASRlist" class="list-group mb-3"></div>
+		<div class="d-flex gap-2">
+			<button class="btn btn-grad flex-fill" onclick="addSelected(); $('#ASRselect').hide(); $('#ASR').hide()">{{getString1(231)}}</button>
+			<button class="btn btn-soft flex-fill" onclick="$('#ASRselect').hide(); $('#ASR').hide()">{{getString1(230)}}</button>
 		</div>
-		<div class="navbar-menu" id="menu">
-			<div class="navbar-end">
-				<a id="current-user" class="navbar-item" href="#">
-					<i class="icon icon-adult" title="{{getString1(134)}}"></i>
-					<span></span>
-				</a>
-				<a id="current-lang" class="navbar-item" href="#">
-					<i class="icon icon-globe" title="{{getString1(184)}}"></i>
-					<span>{{getString1(1)}}</span>
-				</a>
-				<a id="info" class="navbar-item" onclick="switch_pane('/f_info')">
-					<i class="icon icon-cog" title="{{getString1(193)}}"></i>
-					<span>{{getString1(135)}}</span>&nbsp;&nbsp;
-				</a>
+	</div>
+
+	<!-- Language picker -->
+	<div class="modal fade" id="langModal" tabindex="-1">
+		<div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
+			<div class="modal-content ok-card">
+				<div class="modal-header border-0">
+					<h5 class="modal-title">{{getString1(185)}}</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body pt-0"><div id="langList" class="list-group"></div></div>
 			</div>
 		</div>
-	</nav>
-	<div class="container" style="padding: 5px; max-width: 900px; margin-top: 55px;">
-		<div id="notification" class="notification hide">
-			<button class="delete" onclick="$('.notification').hide();"></button>
-			<div class="flash"></div>
-			<p id="notificationControls" style="float:right; cursor: pointer;">{{getString1(229)}}</p>
-		</div>
-		<div class="box" id="container" style="margin-top: 5px;"></div>
 	</div>
+
 <script>
 const updateFreq = 5;
 var spectrum, dBASpectrum, recorder, audios, recorder_timeout, use_recorded;
@@ -152,25 +93,24 @@ var timer, currentUser, ws, siriWave, g_stream, g_devices, taskHandle, source;
 var wav_win = $('#waveform')[0], last_pane=Cookies.get('last_pane') || '/f_home', ASRlist=$("#ASRlist")[0];
 RA = f => 12194 ** 2 * f ** 4 /((f ** 2 + 20.6 ** 2) * Math.sqrt((f ** 2 + 107.7 ** 2) * (f ** 2 + 737.9 ** 2)) * (f ** 2 + 12194 ** 2));
 A = f => 20 * Math.log10(RA(f)) + 2.0;
-function closeNav(){
-	$(".navbar-burger").removeClass("is-active");
-	$(".navbar-menu").removeClass("is-active");
-}
+const esc = s => $('<div>').text(s == null ? '' : s).html();
+
 function switch_pane(name){
 	clearInterval(timer);
 	var stem = name.split('?')[0];
-	$.get(name, (data)=>{$('#container').html(data);})
-	for(var pn of ['home', 'queue', 'search', 'browse', 'info'])
-		if(stem.endsWith(pn)){$("#"+pn).addClass("is-active"); last_pane = stem;}
-		else $("#"+pn).removeClass("is-active")
-	closeNav();
+	$.get(name, (data)=>{$('#container').html(data); window.scrollTo(0, 0);})
+	for(var pn of ['home', 'queue', 'search', 'browse', 'info']){
+		var on = stem.endsWith(pn);
+		$("#"+pn+", #"+pn+"-tab").toggleClass("active", on);
+		if(on) last_pane = stem;
+	}
 }
 get_refresh = (url, pane=last_pane)=>{$.get(url, (_)=>{switch_pane(pane)});}
 post_switch = (url, data)=>{$.post(url, data, (_)=>{
 	clearInterval(timer);
 	$('#container').html(_);
-	closeNav();
 })}
+
 var ASR_hook = '';
 function ASR(task=""){
 	if(g_stream==null && window.location.href.startsWith('http://')){
@@ -215,38 +155,17 @@ function ASR(task=""){
 
 	const updateAnimation = function (idleDeadline) {
 		taskHandle = requestIdleCallback(updateAnimation, { timeout: 1000 / updateFreq });
-
-		//copy frequency data to spectrum from analyser.
-		// holds Number.NEGATIVE_INFINITY, [0 = -100dB, ..., 255 = -30 dB]
 		analyser.getByteFrequencyData(spectrum);
-
 		spectrum.forEach((byteLevel, idx) => {
 			dBASpectrum[idx] = uint8TodB(byteLevel) + weightings[idx];
 		});
-
-		const 
-			highestPerceptibleFrequencyBin = dBASpectrum.reduce((acc, y, idx) => y > -90 ? idx : acc, 0),
-			// S = ∑ s_i
+		const
 			totaldBAPower = dBASpectrum.reduce((acc, y) => acc + y),
-
-			// s⍉ = ∑ s_i ∙ i / ∑ s_i
-			meanFrequencyBin = dBASpectrum.reduce((acc, y, idx) => acc + y * idx) / totaldBAPower,
 			highestPowerBin = dBASpectrum.reduce(([maxPower, iMax], y, idx) => y > maxPower ? [y, idx] : [maxPower, iMax], [-120, 0])[1],
-			highestDetectedFrequency = highestPerceptibleFrequencyBin * (sampleRate / 2 / analyser.frequencyBinCount),
-			meanFrequency = meanFrequencyBin * (sampleRate / 2 / analyser.frequencyBinCount),
 			maxPowerFrequency = highestPowerBin * (sampleRate / 2 / analyser.frequencyBinCount);
-
-		// set the speed for siriwave, scaled to [0..22kHz] -> [0..1]
 		siriWave.setSpeed(maxPowerFrequency / 10e+3);
-		const averagedBAPower = totaldBAPower / analyser.frequencyBinCount;
-
-		// find the max amplituded the zero level is at 128
 		analyser.getByteTimeDomainData(waveForm);
-
-		// find the maximum not considering negative values (without loss of generality)
 		const amplitude = waveForm.reduce((acc, y) => Math.max(acc, y), 128) - 128;
-
-		//scale amplituded from [0, 128] to [0, 10].
 		siriWave.setAmplitude(amplitude / 128 * 10);
 	};
 
@@ -274,24 +193,26 @@ function onRecStop(){
 	req.send(blob);
 }
 
-function showNotification(message, categoryClass, timeout=3000) {
-	$("#notification").addClass(categoryClass)
-	$("#notification div").text(message)
-	$("#notificationControls").hide()
-	$("#notification").fadeIn()
-	setTimeout(function () {$("#notification").fadeOut()}, timeout)
-	setTimeout(function () {$("#notification").removeClass(categoryClass)}, timeout + 750)
+// Notifications (category names come from the server, e.g. "is-success")
+const toastIcons = {success: 'check-circle-fill', danger: 'exclamation-octagon-fill', warning: 'exclamation-triangle-fill', primary: 'info-circle-fill', secondary: 'info-circle'};
+function makeToast(message, categoryClass, timeout, action){
+	var kind = {'is-success': 'success', 'is-danger': 'danger', 'is-warning': 'warning', 'is-info': 'primary'}[categoryClass] || 'secondary';
+	var $t = $(`<div class="toast align-items-center border-0" role="status">
+		<div class="d-flex align-items-start gap-2 p-3">
+			<i class="bi bi-${toastIcons[kind]} text-${kind} fs-5"></i>
+			<div class="flex-grow-1 small" style="white-space: pre-line"></div>
+			${action ? '<button class="btn btn-sm btn-soft toast-action">{{getString1(229)}}</button>' : ''}
+			<button type="button" class="btn-close btn-close-white ms-1" data-bs-dismiss="toast"></button>
+		</div></div>`);
+	$t.find('.flex-grow-1').text(message);
+	if(action) $t.find('.toast-action').click(()=>{action(); $t.remove();});
+	$('#toasts').append($t);
+	$t.on('hidden.bs.toast', ()=>$t.remove());
+	new bootstrap.Toast($t[0], {delay: timeout}).show();
 }
-
-function notifyWithControl(message, action, timeout=3000){
-	$("#notification").addClass('is-info')
-	$("#notification div").text(message)
-	$("#notificationControls").show()
-	$("#notificationControls").click(action)
-	$("#notification").fadeIn()
-	setTimeout(function () {$("#notification").fadeOut()}, timeout)
-	setTimeout(function () {$("#notification").removeClass('is-info')}, timeout + 750)
-}
+function showNotification(message, categoryClass, timeout=3000){ makeToast(message, categoryClass, timeout); }
+function notifyWithControl(message, action, timeout=3000){ makeToast(message, 'is-info', timeout, action); }
+function download_ended(){ $('.btn-dl').removeClass('loading').prop('disabled', false); $('#direct-download-button').prop('disabled', false); }
 
 function setLanguage(lang, reload){
 	Cookies.set("lang", lang, { expires: 3650 });
@@ -302,15 +223,7 @@ function setLanguage(lang, reload){
 	}
 }
 
-// Check for click events on the navbar burger icon
-$(".navbar-burger").click(function () {
-	// Toggle the "is-active" class on both the "navbar-burger" and the "navbar-menu"
-	$(".navbar-burger").toggleClass("is-active");
-	$(".navbar-menu").toggleClass("is-active");
-});
-
-
-// handle current user display
+// Current user
 function set_user(user){
 	currentUser = user;
 	Cookies.set("user", currentUser, { expires: 3650 });
@@ -322,18 +235,15 @@ function load_cur_user(){
 		$.get('/auto_username').then((s)=>{set_user(s)});
 	else set_user(currentUser);
 }
-
 $('#current-user').click(function(e) {
 	e.preventDefault();
 	let name = window.prompt("{{getString1(133)}}" + currentUser, currentUser);
 	if (name) {
 		$.get(`/user_rename/${currentUser}/${name}`);
 		set_user(name);
-		closeNav();
 	}
 });
 
-// handle browser language
 load_cur_user();
 var currentLang = Cookies.get("lang");
 if(!currentLang){
@@ -341,18 +251,18 @@ if(!currentLang){
 	setLanguage(currentLang, false);
 }
 
+// Language picker
 $('#current-lang').click(function(e) {
 	e.preventDefault();
 	$.get('/get_lang_list').done(function(lang_json){
-		var lang_dict = JSON.parse(lang_json);
-		var popup_html = '';
-		for(var lang1 in lang_dict){
-			popup_html += `<input type="radio" onclick="setLanguage('${lang1}', true);" ${currentLang==lang1?"checked":""}>&nbsp;${lang_dict[lang1]}<br>`;
-		}
-		var popUpList = $(`<div title="{{getString1(185)}}">${popup_html}</div>`)
-		popUpList.dialog();
+		var lang_dict = JSON.parse(lang_json), html = '';
+		for(var lang1 in lang_dict)
+			html += `<button class="list-group-item list-group-item-action d-flex justify-content-between ${currentLang==lang1?'active':''}" onclick="setLanguage('${lang1}', true);">${esc(lang_dict[lang1])}${currentLang==lang1?'<i class="bi bi-check-lg"></i>':''}</button>`;
+		$('#langList').html(html);
+		bootstrap.Modal.getOrCreateInstance('#langModal').show();
 	});
 });
+
 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
 	navigator.mediaDevices.getUserMedia({audio: true,},)
 		.then(stream => Promise.all([stream, navigator.mediaDevices.enumerateDevices()]))
@@ -369,12 +279,13 @@ function open_wsock_if_nec(){
 	}
 	return ws;
 }
+
+// Songs recognised from speech
 var titles, files;
 function add1song(title, filename){
 	ws.send(`addsongs ${currentUser}\t${filename}`);
 	notifyWithControl('{{getString1(227)|safe}}'.replace("%s", title), ()=>{
 		ws.send('pop_from_queue '+filename);
-		$("#notification").hide();
 	});
 }
 function add1songById(ii){
@@ -388,7 +299,7 @@ function addSongs(json){
 	catch(err){ console.log(err) }
 	ASRlist.innerHTML = "";
 	for(var i=0; i<titles.length; i++)
-		ASRlist.innerHTML += `<p><input type="checkbox" id="add_optn_${i}" style="cursor:pointer; transform:scale(1.5)" value=${i}>&nbsp;&nbsp;<label for="add_optn_${i}" onclick="add1songById(${i})" style="cursor:pointer">${titles[i]}</label></p>`;
+		ASRlist.innerHTML += `<div class="list-group-item d-flex align-items-center gap-2"><input class="form-check-input m-0" type="checkbox" id="add_optn_${i}" value=${i}><span class="flex-grow-1" role="button" onclick="add1songById(${i})">${esc(titles[i])}</span></div>`;
 	$("#ASR").show();
 	$("#ASRselect").show();
 }
@@ -402,5 +313,4 @@ open_wsock_if_nec();
 switch_pane(last_pane);
 </script>
 </body>
-
 </html>
