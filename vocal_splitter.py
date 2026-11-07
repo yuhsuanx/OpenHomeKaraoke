@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys, time, shutil
+import os, re, sys, time, shutil
 import argparse, requests, subprocess
 
 import numpy as np
@@ -98,9 +98,47 @@ class Separator(object):
 		return y_spec, v_spec
 
 
+# All tracks (original, nonvocal, vocal) are normalized to the same loudness, so switching
+# vocal mode or songs does not change the perceived volume.
+TARGET_LUFS = -12
+
+
+def ffm_lufs(fn):
+	err = subprocess.run(['ffmpeg', '-nostats', '-i', fn, '-vn', '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'],
+	                     capture_output = True, text = True).stderr
+	m = re.findall(r'I:\s+(-?[\d.]+) LUFS', err)
+	return float(m[-1]) if m else None
+
+
+def loudness_filter(fn):
+	lufs = ffm_lufs(fn)
+	if lufs is None:
+		return []
+	gain = float(np.clip(TARGET_LUFS - lufs, -20, 12))
+	if abs(gain) < 0.5:
+		return []
+	# a limiter (without auto-leveling, delay compensated) prevents clipping when boosting
+	return ['-af', f'volume={gain:.2f}dB' + (',alimiter=limit=0.891:level=0:latency=1' if gain > 0 else '')]
+
+
+def ffm_normalize_video(fn, tmp_fn):
+	if not fn.lower().endswith('.mp4'):  # re-encoding to AAC only fits the mp4 container
+		return
+	af = loudness_filter(fn)
+	if not af:
+		return
+	r = subprocess.run(['ffmpeg', '-y', '-i', fn, '-map', '0:v?', '-map', '0:a', '-map', '0:s?', '-c', 'copy',
+	                    '-c:a', 'aac', '-b:a', '192k'] + af + [tmp_fn])
+	if r.returncode == 0:
+		try:
+			os.replace(tmp_fn, fn)
+		except Exception:
+			os.remove(tmp_fn)
+
+
 def ffm_wav2m4a(input_fn, output_fn, br = '128k'):
 	input_fn, output_fn = [fn.replace('"', '\\"') for fn in [input_fn, output_fn]]
-	subprocess.run(['ffmpeg', '-y', '-i', input_fn, '-c:a', 'aac', '-b:a', br, output_fn])
+	subprocess.run(['ffmpeg', '-y', '-i', input_fn] + loudness_filter(input_fn) + ['-c:a', 'aac', '-b:a', br, output_fn])
 
 
 def ffm_video2wav(input_fn, output_fn):
@@ -221,6 +259,9 @@ def main(argv):
 	if (args.gpu is None or args.gpu >= 0) and torch.cuda.is_available():
 		device = torch.device(f'cuda:{0 if args.gpu is None else args.gpu}')
 		model.to(device)
+	elif (args.gpu is None or args.gpu >= 0) and torch.backends.mps.is_available():
+		device = torch.device('mps')
+		model.to(device)
 	args.model = model
 	args.device = device
 	print('done', flush = True)
@@ -245,6 +286,7 @@ def main(argv):
 		# run vocal splitter on next_file
 		print(f'Start processing {next_file} :')
 		ffm_video2wav(song_path+'/'+next_file, in_wav)
+		ffm_normalize_video(song_path+'/'+next_file, f'{song_path}/.normalizing.mp4')
 
 		if use_DNN:
 			split_vocal_by_dnn(in_wav, out_wav_nonvocal, out_wav_vocal, args)
