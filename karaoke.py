@@ -1248,15 +1248,36 @@ class Karaoke:
 		self.render_splash_screen()
 		self.vlcclient.show_overlay(pygame.image.tobytes(self.screen, 'BGRA'), w, h, ow, oh)
 
+	def show_qr_mpv(self):
+		"""QR code at the bottom-left of the playing video (about 1/6 of the window height), so people can join mid-song."""
+		ow, oh = self.vlcclient.osd_size()
+		if not ow or not oh:
+			return
+		if getattr(self, 'qr_bgra', (None,))[0] != oh:	# re-render only when the window height changes
+			qr = pygame.image.load(self.qr_code_path)
+			size = qr.get_width() * max(1, round(oh / 6) // qr.get_width())	# whole-pixel modules keep it sharp to scan
+			img = pygame.Surface((size, size))
+			img.blit(pygame.transform.scale(qr, (size, size)), (0, 0))
+			self.qr_bgra = (oh, size, pygame.image.tobytes(img, 'BGRA'))
+		_, size, bgra = self.qr_bgra
+		margin = round(oh * 0.03)
+		self.vlcclient.show_qr(bgra, size, margin, oh - margin - size)
+
 	def handle_run_loop(self):
 		if self.use_mpv:
 			if not self.vlcclient.alive():
 				logging.warning("mpv window closed: Exiting pikaraoke...")
 				self.running = False
-			elif self.hide_splash_screen or (self.is_file_playing() and self.has_video):
+				return
+			playing_video = self.is_file_playing() and self.has_video
+			if self.hide_splash_screen or playing_video:
 				self.vlcclient.hide_overlay()
 			else:
 				self.render_splash_mpv()
+			if self.show_overlay and playing_video:
+				self.show_qr_mpv()
+			else:
+				self.vlcclient.hide_qr()
 			time.sleep(0.1)
 			return
 		for event in pygame.event.get():
