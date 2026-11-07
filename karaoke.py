@@ -651,11 +651,26 @@ class Karaoke:
 	def delete(self, song_path):
 		logging.info("Deleting song: " + song_path)
 
-		# delete all associated cdg/vocal/nonvocal files if exist
+		# delete all associated cdg/vocal/nonvocal/lyrics files if exist
 		for fn in self.get_all_assoc_files(song_path):
 			self.delete_if_exist(fn)
+		self.forget_song(os.path.basename(song_path))
 
 		self.get_available_songs()
+
+	def forget_song(self, basename):
+		"""Drop a deleted song's entries from the crop, volume and saved-delay caches."""
+		with self.crop_lock:
+			if self.crops is None:
+				self.crops = Try(lambda: json.load(open(self.download_path + '.crop.json')), {})
+			if self.crops.pop(basename, None) is not None:
+				with open(self.download_path + '.crop.json', 'w') as fp:
+					json.dump(self.crops, fp, ensure_ascii=False)
+		if self.song2vol.pop(basename, None) is not None:
+			with Open(self.download_path + '/.mp3_volume.json.gz', 'wt') as fp:
+				json.dump(self.song2vol, fp, indent=1)
+		if self.save_delays and self.delays.pop(basename, None) is not None:
+			self.delays_dirty = True	# written out by the delay-saving loop
 
 	def rename_if_exist(self, old_path, new_path):
 		if os.path.isfile(old_path):
