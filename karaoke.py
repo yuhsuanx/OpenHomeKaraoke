@@ -15,7 +15,7 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 from unidecode import unidecode
 from flask import request
-from lib import omxclient, vlcclient
+from lib import omxclient, vlcclient, mpvclient
 from lib.lyrics import make_lyrics
 from lib.get_platform import *
 from lib.NLP import *
@@ -67,6 +67,16 @@ def detect_black_bars(file_path):
 	if (x1 - x0) >= W * 0.97 and (y1 - y0) >= H * 0.97:	# bars too thin to bother
 		return ''
 	return f'{x0}+{y0}+{W - x1}+{H - y1}'	# VLC border form left+top+right+bottom ('WxH+X+Y' is misread by VLC 3)
+
+
+def mpv_crop(file_path, borders):
+	"""Convert detect_black_bars()' 'L+T+R+B' borders to mpv --video-crop 'WxH+X+Y' ('' if none)."""
+	if not borders:
+		return ''
+	L, T, R, B = map(int, borders.split('+'))
+	W, H = map(int, check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+	                              '-of', 'csv=p=0', file_path]).decode().strip().split(',')[:2])
+	return f'{W - L - R}x{H - T - B}+{L}+{T}'
 
 
 class Karaoke:
@@ -123,6 +133,7 @@ class Karaoke:
 
 		# other initializations
 		self.platform = get_platform()
+		self.use_mpv = self.use_vlc and self.player == 'mpv'
 		self.vlcclient = None
 		self.omxclient = None
 		self.screen = None
@@ -174,7 +185,9 @@ class Karaoke:
 		self.kill_player()
 
 		self.generate_qr_code()
-		if self.use_vlc:
+		if self.use_mpv:	# MPVClient duck-types VLCClient for the calls both players share (stop/seek/pause/state...)
+			self.vlcclient = mpvclient.MPVClient(path = self.mpv_path)
+		elif self.use_vlc:
 			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
 			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
 		else:
@@ -709,7 +722,9 @@ class Karaoke:
 
 	def play_file(self, file_path, extra_params = []):
 		self.switchingSong = True
-		if self.use_vlc:
+		if self.use_mpv:
+			self.play_file_mpv(file_path)
+		elif self.use_vlc:
 			if self.save_delays:
 				saved_delays = self.delays.get(os.path.basename(file_path), {})
 				self.audio_delay = self.audio_delay if self.audio_delay else saved_delays.get('audio_delay', 0)
@@ -761,8 +776,50 @@ class Karaoke:
 		self.status_dirty = True
 		self.render_splash_screen()  # remove old previous track
 
+	def play_file_mpv(self, file_path):
+		"""Start mpv with the vocal/nonvocal tracks and lyrics loaded, so play_vocal()/toggle_subtitle() switch live."""
+		if self.save_delays:
+			saved_delays = self.delays.get(os.path.basename(file_path), {})
+			self.audio_delay = self.audio_delay if self.audio_delay else saved_delays.get('audio_delay', 0)
+			self.subtitle_delay = self.subtitle_delay if self.subtitle_delay else saved_delays.get('subtitle_delay', 0)
+			self.show_subtitle = False if self.show_subtitle==False else saved_delays.get('show_subtitle', True)
+		logging.info("Playing video in mpv: " + file_path)
+		self.now_playing_slave = self.try_set_vocal_mode(self.vocal_mode, file_path)
+		self.loaded_slaves = [s for s in (self.slave_path(m, file_path) for m in ('nonvocal', 'vocal')) if os.path.isfile(s)]
+		params = [f'--audio-file={s}' for s in self.loaded_slaves]
+		lyrics_file = self.lyrics_path(file_path)
+		if os.path.isfile(lyrics_file):
+			params += [f'--sub-file={lyrics_file}']
+		params += [f'--sub-visibility={"yes" if self.show_subtitle else "no"}', f'--audio-delay={self.audio_delay}',
+		           f'--sub-delay={self.subtitle_delay}', f'--speed={self.play_speed}']
+		if mpvclient.pitch_filter(self.now_playing_transpose):
+			params += [f'--af={mpvclient.pitch_filter(self.now_playing_transpose)}']
+		crop = Try(lambda: mpv_crop(file_path, self.get_crop(file_path)), '')
+		if crop:
+			params += [f'--video-crop={crop}']
+		self.now_playing = self.filename_from_path(file_path)
+		self.now_playing_filename = file_path
+		self.is_paused = False
+		if self.normalize_vol and self.logical_volume is not None:
+			self.volume = self.logical_volume / np.sqrt(self.get_mp3_volume(file_path))
+		info = self.vlcclient.play_file(file_path, self.volume, params, self.now_playing_slave,
+		                                fullscreen = getattr(self, 'full_screen', not self.windowed)) or {}
+		self.has_subtitle = info.get('has_subtitle', False) or os.path.isfile(lyrics_file)	# keep the toggle visible when lyrics are hidden
+		self.has_video = info.get('has_video', True)
+		if info.get('volume') is not None:
+			self.volume = info['volume']
+		if self.normalize_vol:
+			self.media_vol = self.get_mp3_volume(self.now_playing_filename)
+			self.logical_volume = self.volume * np.sqrt(self.media_vol)
+
 	def play_transposed(self, semitones):
-		if self.use_vlc:
+		if self.use_mpv:	# live: also called by toggle_full_screen()
+			if mpvclient.pitch_filter(semitones) != mpvclient.pitch_filter(self.now_playing_transpose):
+				self.vlcclient.set_transpose(semitones)	# re-creating the filter would glitch the audio
+			self.now_playing_transpose = semitones
+			self.vlcclient.set_fullscreen(getattr(self, 'full_screen', not self.windowed))
+			self.status_dirty = True
+		elif self.use_vlc:
 			self.now_playing_transpose = semitones
 			status_xml = self.vlcclient.command().text if self.is_paused else self.vlcclient.pause(False).text
 			info = self.vlcclient.get_info_xml(status_xml)
@@ -922,7 +979,9 @@ class Karaoke:
 			self.set_delays_dict(self.now_playing_filename, 'audio_delay', self.audio_delay)
 
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.vlcclient.set_property('audio-delay', self.audio_delay)
+			elif self.use_vlc:
 				self.vlcclient.command(f"audiodelay&val={self.audio_delay}")
 			else:
 				logging.warning("OMXplayer cannot set audio delay!")
@@ -949,7 +1008,9 @@ class Karaoke:
 			self.set_delays_dict(self.now_playing_filename, 'subtitle_delay', self.subtitle_delay)
 
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.vlcclient.set_property('sub-delay', self.subtitle_delay)
+			elif self.use_vlc:
 				self.vlcclient.command(f"subdelay&val={self.subtitle_delay}")
 			else:
 				logging.warning("OMXplayer cannot set subtitle delay!")
@@ -989,7 +1050,9 @@ class Karaoke:
 
 	def vol_up(self):
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.volume = self.vlcclient.vol_up()
+			elif self.use_vlc:
 				self.vlcclient.vol_up()
 				xml = self.vlcclient.command().text
 				self.volume = int(self.vlcclient.get_val_xml(xml, 'volume'))
@@ -1003,7 +1066,9 @@ class Karaoke:
 
 	def vol_down(self):
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.volume = self.vlcclient.vol_down()
+			elif self.use_vlc:
 				self.vlcclient.vol_down()
 				xml = self.vlcclient.command().text
 				self.volume = int(self.vlcclient.get_val_xml(xml, 'volume'))
@@ -1017,7 +1082,9 @@ class Karaoke:
 
 	def vol_set(self, volume):
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.volume = self.vlcclient.vol_set(volume)
+			elif self.use_vlc:
 				self.vlcclient.vol_set(volume)
 				xml = self.vlcclient.command().text
 				self.volume = int(self.vlcclient.get_val_xml(xml, 'volume'))
@@ -1032,7 +1099,9 @@ class Karaoke:
 
 	def play_speed_set(self, speed):
 		if self.is_file_playing():
-			if self.use_vlc:
+			if self.use_mpv:
+				self.play_speed = self.vlcclient.playspeed_set(speed)
+			elif self.use_vlc:
 				self.vlcclient.playspeed_set(speed)
 				xml = self.vlcclient.command().text
 				self.play_speed = float(self.vlcclient.get_val_xml(xml, 'rate'))
@@ -1060,7 +1129,15 @@ class Karaoke:
 
 	def play_vocal(self, mode = None, force = False):
 		# mode=vocal/nonvocal/mixed, or else (use current)
-		if self.use_vlc:
+		if self.use_mpv:	# switch live in the same mpv window
+			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
+			if play_slave != self.now_playing_slave or force:
+				self.vlcclient.select_audio(play_slave)
+				self.vlcclient.set_property('sub-visibility', self.show_subtitle)
+				self.now_playing_slave = play_slave
+				self.status_dirty = True
+			self.get_vocal_info(True)
+		elif self.use_vlc:
 			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
 			if not force and self.now_playing_slave == play_slave:
 				return

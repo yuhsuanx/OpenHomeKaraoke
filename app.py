@@ -17,6 +17,7 @@ from constants import VERSION
 from collections import defaultdict
 from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
+from lib.mpvclient import get_default_mpv_path
 
 try:
 	from urllib.parse import quote, unquote
@@ -1124,6 +1125,17 @@ if __name__ == "__main__":
 		default = default_vlc_path,
 	)
 	parser.add_argument(
+		"--player",
+		choices = ['vlc', 'mpv'],
+		default = 'vlc',
+		help = "Video player (Default: vlc). mpv switches original/instrumental/vocal and lyrics live, without reopening the window",
+	)
+	parser.add_argument(
+		"--mpv-path",
+		help = f"Full path to mpv (Default: {get_default_mpv_path()})",
+		default = get_default_mpv_path(),
+	)
+	parser.add_argument(
 		"--vlc-port",
 		help = f"HTTP port for VLC remote control api (Default: {default_vlc_port})",
 		default = default_vlc_port,
@@ -1208,7 +1220,11 @@ if __name__ == "__main__":
 			except:
 				print(getString(44) + args.youtubedl_path)
 				sys.exit(1)
-	if args.use_vlc and not os.path.isfile(args.vlc_path):
+	if args.use_vlc and args.player == 'mpv':
+		if not os.path.isfile(args.mpv_path):
+			print("mpv not found: " + args.mpv_path)
+			sys.exit(1)
+	elif args.use_vlc and not os.path.isfile(args.vlc_path):
 		print(getString(45) + args.vlc_path)
 		sys.exit(1)
 	if platform == "raspberry_pi" and not args.use_vlc and not os.path.isfile(args.omxplayer_path):
