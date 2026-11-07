@@ -128,9 +128,10 @@ body {
 
 /* ---------- queue ---------- */
 .q-num { width: 1.75rem; height: 1.75rem; border-radius: 999px; background: var(--ok-surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: .8rem; color: #aab0c0; flex: none; }
-.drag-handle { cursor: grab; color: #5b6275; touch-action: none; }
-.ui-sortable-helper { box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
-.ui-sortable-placeholder { visibility: visible !important; background: rgba(192, 76, 253, .08); }
+.drag-handle { cursor: grab; color: #5b6275; }
+#auto-refresh .list-group-item { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }	/* long-press drags the row instead of selecting/copying its text */
+.sortable-chosen { background: var(--ok-surface-2); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.sortable-ghost { background: rgba(192, 76, 253, .08); opacity: .5; }
 
 /* ---------- search ---------- */
 .result-thumb { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: .6rem; background: var(--ok-surface-2); flex: none; }
