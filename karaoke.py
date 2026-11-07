@@ -1386,7 +1386,7 @@ class Karaoke:
 			pcm_data = subprocess.check_output(['ffmpeg', '-i', filename, '-vn', '-f', 's16le', '-acodec', 'pcm_s16le', '-'], stderr = subprocess.DEVNULL)
 			volume_val = np.clip(np.sqrt(np.std(np.frombuffer(pcm_data, dtype = np.int16))/STD_VOL), 1/16, 16)
 			self.song2vol[basename] = [volume_val, fsize, md5]
-			with Open(self.download_path+'/.mp3_volume.json.gz', 'wb') as fp:
+			with Open(self.download_path+'/.mp3_volume.json.gz', 'wt') as fp:
 				json.dump(self.song2vol, fp, indent=1)
 			return volume_val
 		except:
