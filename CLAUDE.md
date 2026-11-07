@@ -145,6 +145,8 @@ There is no single-file mode; it only processes songs from the library.
 ### Player State Management
 
 - VLC controlled via HTTP API on port 5002 (configurable via --vlc-port)
+- Without `--ssl`, `app.py` also serves HTTPS on `port+1` (for browser mic access), so `--vlc-port` must not equal `port+1` (e.g. `-p 5001` needs a non-default `--vlc-port`)
+- `--hide-splash-screen` is currently broken: `handle_run_loop()` calls `pygame.event.get()` without `pygame.init()`, and `lib/vlcclient.py` reads `K.full_screen`, which is only set by the splash code
 - Player state polled regularly in background threads
 - State changes trigger WebSocket updates to all connected clients
 - Audio/subtitle delays can be saved per-song in JSON files

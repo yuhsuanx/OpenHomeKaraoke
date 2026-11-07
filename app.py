@@ -1234,6 +1234,19 @@ if __name__ == "__main__":
 	# Configure karaoke process
 	os.K = K = Karaoke(args)
 
+	# Per-request access logs (e.g. vocal splitter polling) go to access.log; only warnings/errors reach the console
+	if int(args.log_level) > logging.DEBUG:
+		import logging.handlers
+		wlog = logging.getLogger('werkzeug')
+		wlog.setLevel(logging.INFO)
+		wlog.propagate = False
+		wlog.addHandler(logging.handlers.RotatingFileHandler(
+			os.path.join(os.path.dirname(os.path.abspath(__file__)), 'access.log'), maxBytes=5_000_000, backupCount=1))
+		console = logging.StreamHandler()
+		console.setLevel(logging.WARNING)
+		wlog.addHandler(console)
+	logging.info(f"Web UI: {K.url}" + ("" if args.ssl else f"  (HTTPS for microphone: https://{K.ip}:{args.port+1})"))
+
 	if not args.ssl:
 		threading.Thread(target=lambda:app.run(host='0.0.0.0', port=args.port+1, threaded = True, ssl_context=('cert.pem', 'key.pem'))).start()
 	threading.Thread(target=lambda:app.run(host='0.0.0.0', port=args.port, threaded = True, ssl_context=('cert.pem', 'key.pem') if args.ssl else None)).start()

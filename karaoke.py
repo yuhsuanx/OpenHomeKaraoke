@@ -315,41 +315,44 @@ class Karaoke:
 		blitY = self.ref_W*self.screen.get_height()//self.screen.get_width() - 40
 		sysfont_size = 30
 
-		# Draw logo and name
-		text = self.render_font(sysfont_size * 2, getString(136), (255, 255, 255))
-		if not hasattr(self, 'logo'):
-			self.logo = pygame.image.load(self.logo_path)
-		_, _, W, H = self.normalize(list(self.logo.get_rect()))
-		W, H = W/2, H/2
 		center = self.screen.get_rect().center
-		self.logo1 = pygame.transform.scale(self.logo, (W, H))
-		self.screen.blit(self.logo1, (center[0]-W/2, center[1]-H/2-text[1].height/2))
-		self.screen.blit(text[0], (center[0]-text[1].width/2, center[1]+H/2))
-
-		if not self.hide_ip:
-			qr_size = 150
+		if self.hide_ip:
+			# Draw logo and name
+			text = self.render_font(sysfont_size * 2, getString(136), (255, 255, 255))
+			if not hasattr(self, 'logo'):
+				self.logo = pygame.image.load(self.logo_path)
+			_, _, W, H = self.normalize(list(self.logo.get_rect()))
+			W, H = W/2, H/2
+			self.logo1 = pygame.transform.scale(self.logo, (W, H))
+			self.screen.blit(self.logo1, (center[0]-W/2, center[1]-H/2-text[1].height/2))
+			self.screen.blit(text[0], (center[0]-text[1].width/2, center[1]+H/2))
+		else:
+			# Draw a large QR code in the centre, with the connection URL below it
+			qr_px = self.screen.get_height()*45//100
 			if not hasattr(self, 'p_image'):
 				self.p_image = pygame.image.load(self.qr_code_path)
-			self.p_image1 = pygame.transform.scale(self.p_image, self.normalize((qr_size, qr_size)))
-			self.screen.blit(self.p_image1, self.normalize((20, blitY - 125)))
+			self.p_image1 = pygame.transform.scale(self.p_image, (qr_px, qr_px))
+			qr_top = center[1] - qr_px//2 - self.normalize(40)
+			self.screen.blit(self.p_image1, (center[0]-qr_px//2, qr_top))
+			textY = qr_top + qr_px + self.normalize(20)
 			if not self.is_network_connected():
 				text = self.render_font(sysfont_size, getString(48), (255, 255, 255))
-				self.screen.blit(text[0], self.normalize((qr_size + 35, blitY)))
+				self.screen.blit(text[0], (center[0]-text[1].width/2, textY))
 				time.sleep(10)
 				logging.info("No IP found. Network/Wifi configuration required. For wifi config, try: sudo raspi-config or the desktop GUI: startx")
 				self.stop()
 			else:
 				text = self.render_font(sysfont_size, getString(49) + self.url, (255, 255, 255))
-				self.screen.blit(text[0], self.normalize((qr_size + 35, blitY)))
+				self.screen.blit(text[0], (center[0]-text[1].width/2, textY))
 				# Windows and Mac-OS should use screen projection and AirPlay
 				if self.streamer_alive():
 					text = self.render_font(sysfont_size, getString(50) + self.url.rsplit(":", 1)[0] + ":4000", (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 40)))
+					self.screen.blit(text[0], (center[0]-text[1].width/2, textY + self.normalize(40)))
 				if not self.firstSongStarted:
 					text = self.render_font(sysfont_size, getString(51), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 120)))
+					self.screen.blit(text[0], self.normalize((20, blitY - 40)))
 					text = self.render_font(sysfont_size, getString(52), (255, 255, 255))
-					self.screen.blit(text[0], self.normalize((qr_size + 35, blitY - 80)))
+					self.screen.blit(text[0], self.normalize((20, blitY)))
 
 		blitY = 10
 		if not self.has_video:
