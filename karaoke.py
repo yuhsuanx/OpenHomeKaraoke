@@ -888,6 +888,7 @@ class Karaoke:
 		else:
 			logging.info("'%s' is adding song to queue: %s" % (user, song_path))
 			self.queue.append({"user": user, "file": song_path, "title": self.filename_from_path(song_path)})
+			self.toast = (user, self.queue[-1]["title"], time.time())	# who picked what, shown on screen by show_toast_mpv()
 			self.update_queue()
 			return True
 
@@ -1276,7 +1277,41 @@ class Karaoke:
 			self.qr_bgra = (oh, size, pygame.image.tobytes(img, 'BGRA'))
 		_, size, bgra = self.qr_bgra
 		margin = round(oh * 0.03)
-		self.vlcclient.show_qr(bgra, size, margin, oh - margin - size)
+		self.vlcclient.show_image(1, (size, oh), bgra, size, size, margin, oh - margin - size)
+
+	TOAST_SECS = 6
+
+	def show_toast_mpv(self):
+		"""For TOAST_SECS after someone queues a song, a card at the bottom-right saying who picked what (mpv overlay 2)."""
+		t = getattr(self, 'toast', None)
+		if not t or time.time() - t[2] > self.TOAST_SECS:
+			return self.vlcclient.hide_image(2)
+		ow, oh = self.vlcclient.osd_size()
+		if not ow or not oh or self.vlcclient.image_keys.get(2) == (t, ow, oh):
+			return
+		# draw with the splash's fonts and colours: on a transparent surface the size the splash is drawn at
+		C, n, splash = self.SPLASH_COLORS, self.normalize, self.screen
+		w = min(ow, 1920)
+		self.screen = pygame.Surface((w, round(oh * w / ow)), pygame.SRCALPHA)
+		try:
+			user, title, _ = t
+			artist, _, song = title.rpartition(' - ')
+			pad, max_w = n(44), n(720)
+			rs = [self.splash_text('medium', 36, f'{user}  點了', C['accent'], (pad, pad), max_w=max_w)]
+			rs.append(self.splash_text('bold', 64, song, C['text'], (pad, rs[-1].bottom + n(18)), max_w=max_w))
+			if artist:
+				rs.append(self.splash_text('regular', 40, artist, C['muted'], (pad, rs[-1].bottom + n(12)), max_w=max_w))
+			card = pygame.Rect(0, 0, max(r.right for r in rs) + pad, rs[-1].bottom + pad)
+			img = pygame.Surface(card.size, pygame.SRCALPHA)
+			pygame.draw.rect(img, C['card'], card, border_radius=int(n(24)))
+			pygame.draw.rect(img, C['border'], card, max(1, int(n(2))), border_radius=int(n(24)))
+			img.blit(self.screen, (0, 0))
+		finally:
+			self.screen = splash
+		dw, dh = round(card.w * ow / w), round(card.h * ow / w)
+		margin = round(oh * 0.03)
+		self.vlcclient.show_image(2, (t, ow, oh), pygame.image.tobytes(img, 'BGRA'), card.w, card.h,
+		                          ow - margin - dw, oh - margin - dh, dw, dh)
 
 	def handle_run_loop(self):
 		if self.use_mpv:
@@ -1292,7 +1327,8 @@ class Karaoke:
 			if self.show_overlay and playing_video:
 				self.show_qr_mpv()
 			else:
-				self.vlcclient.hide_qr()
+				self.vlcclient.hide_image(1)
+			self.show_toast_mpv()
 			time.sleep(0.1)
 			return
 		for event in pygame.event.get():

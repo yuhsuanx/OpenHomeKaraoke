@@ -41,8 +41,7 @@ class MPVClient:
 		]
 		self.splash_path = f'/tmp/pikaraoke-mpv-{os.getpid()}-splash.bgra'
 		self.overlay_key = None	# what the splash overlay currently shows, None if hidden
-		self.qr_path = f'/tmp/pikaraoke-mpv-{os.getpid()}-qr.bgra'
-		self.qr_key = None	# size/position of the QR overlay shown over videos, None if hidden
+		self.image_keys = {}	# overlay id -> what it shows (1: QR code over videos, 2: queue toast), None if hidden
 		self.process = None
 		self.is_transposing = False	# True while (re)starting, so get_state() returns the cached state
 		self.lock = threading.Lock()
@@ -121,20 +120,21 @@ class MPVClient:
 			self.command('overlay-remove', 0)
 			self.overlay_key = None
 
-	def show_qr(self, bgra, size, x, y):
-		"""Show a size x size BGRA image at (x, y) as overlay 1, over the video; no-op if unchanged."""
-		key = (size, x, y)
-		if key == self.qr_key:
+	def show_image(self, oid, key, bgra, w, h, x, y, dw=None, dh=None):
+		"""Show a w x h BGRA image at (x, y), scaled to dw x dh, as overlay oid (higher ids draw on top);
+		no-op if it already shows key."""
+		if self.image_keys.get(oid) == key:
 			return
-		with open(self.qr_path, 'wb') as fp:
+		path = f'/tmp/pikaraoke-mpv-{os.getpid()}-{oid}.bgra'
+		with open(path, 'wb') as fp:
 			fp.write(bgra)
-		r = self.command('overlay-add', 1, x, y, self.qr_path, 0, 'bgra', size, size, size * 4)
-		self.qr_key = key if r and r.get('error') == 'success' else None
+		r = self.command('overlay-add', oid, x, y, path, 0, 'bgra', w, h, w * 4, dw or w, dh or h)
+		self.image_keys[oid] = key if r and r.get('error') == 'success' else None
 
-	def hide_qr(self):
-		if self.qr_key is not None:
-			self.command('overlay-remove', 1)
-			self.qr_key = None
+	def hide_image(self, oid):
+		if self.image_keys.get(oid) is not None:
+			self.command('overlay-remove', oid)
+			self.image_keys[oid] = None
 
 	def osd_size(self):
 		return self.get('osd-width', 'osd-height')
