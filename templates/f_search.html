@@ -6,10 +6,8 @@
 <!-- Search box -->
 <div class="input-group input-group-lg mb-2">
 	<span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search"></i></span>
-	<input class="form-control border-start-0 ps-0" list="suggestions" id="search-box" type="search" value="{{search_string}}"
+	<input class="form-control border-start-0 ps-0" id="search-box" type="search" value="{{search_string}}"
 		autocomplete="off" enterkeyhint="search" placeholder="{{getString1(118)}}">
-	<datalist id="suggestions"></datalist>
-	<button class="btn btn-grad px-3" id="add-queue-link" hidden><i class="bi bi-plus-lg"></i> {{getString1(119)}}</button>
 	<button class="btn btn-grad px-3" id="search-link"><span class="spinner-border spinner-border-sm" hidden></span> {{getString1(118)}}</button>
 </div>
 <div class="d-flex justify-content-between align-items-center small mb-1">
@@ -20,6 +18,17 @@
 	<a class="link-secondary" data-bs-toggle="collapse" href="#advanced-settings" role="button"><i class="bi bi-sliders"></i> {{getString1(121)}}</a>
 </div>
 <p class="small text-secondary mb-3">{{getString1(122)}} {{getString1(123)}}</p>
+
+<!-- Tabs: local library matches / YouTube results -->
+<div class="btn-group seg w-100 mb-3" role="group" id="result-tabs">
+	<button class="btn btn-soft" data-pane="#pane-local">{{getString1(240)}} <span class="opacity-75" id="lib-count"></span></button>
+	<button class="btn btn-soft" data-pane="#pane-yt">YouTube{% if search_results %} <span class="opacity-75">· {{search_results|length}}</span>{% endif %}</button>
+</div>
+
+<!-- Library matches (live, from /suggest) -->
+<div id="pane-local" class="mb-3">
+	<div class="list-group" id="lib-list"></div>
+</div>
 
 <!-- Download options (shared by search results and direct URL) -->
 <div class="collapse" id="advanced-settings">
@@ -33,6 +42,7 @@
 		</form>
 	</div>
 </div>
+<div id="pane-yt">
 <div class="d-flex flex-wrap gap-3 small mb-3" id="dl-options">
 	<div class="form-check form-switch m-0" title="{{getString1(207)}}">
 		<input class="form-check-input" type="checkbox" role="switch" id="opt-enqueue" checked><label class="form-check-label" for="opt-enqueue">{{getString1(125)}}</label>
@@ -48,33 +58,97 @@
 {% if search_results %}
 <div class="section-label mb-2">{{getString1(129)}} “{{search_string}}”</div>
 <div class="list-group">
-	{% for title,url,id,dur in search_results %}
+	{% for r in search_results %}{% set title, url, id, dur = r[:4] %}{% set name = r[4] if r|length > 4 else none %}
 	<div class="list-group-item d-flex align-items-center gap-3">
 		<a href="{{url}}" target="_blank" rel="noopener"><img class="result-thumb" loading="lazy" src="https://img.youtube.com/vi/{{id}}/mqdefault.jpg" alt=""></a>
 		<div class="flex-grow-1" style="min-width:0">
 			<div class="text-truncate-2">{{title}}</div>
 			<div class="small text-secondary">{{dur}}</div>
 		</div>
-		<button class="btn btn-grad btn-round btn-dl flex-none" title="{{getString1(127)}}" data-url="{{url}}">
+		<button class="btn btn-grad btn-round btn-dl flex-none" title="{{getString1(127)}}" data-url="{{url}}" data-title="{{title}}"{% if name %} data-name='{{name|tojson}}'{% endif %}>
 			<i class="bi bi-download"></i><span class="spinner-border spinner-border-sm"></span>
 		</button>
 	</div>
 	{% endfor %}
 </div>
 {% endif %}
+</div>
+
+<!-- Before downloading a search result: pick its singer(s) and song title (pre-filled with a best guess) -->
+<div class="modal fade" id="nameModal" tabindex="-1">
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content ok-card">
+			<div class="modal-header border-0 pb-1">
+				<h5 class="modal-title">{{getString1(236)}}</h5>
+				<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+			</div>
+			<div class="modal-body pt-0">
+				<div class="small text-secondary mb-3" id="nm-yt"></div>
+				<label class="form-label small mb-1" for="nm-singers">{{getString1(237)}}</label>
+				<input class="form-control mb-2" id="nm-singers" type="search" autocomplete="off">
+				<div class="d-flex flex-wrap gap-2 mb-3" id="nm-singer-chips"></div>
+				<label class="form-label small mb-1" for="nm-title">{{getString1(238)}}</label>
+				<input class="form-control mb-2" id="nm-title" type="search" autocomplete="off">
+				<div class="d-flex flex-wrap gap-2 mb-3" id="nm-title-chips"></div>
+				<div class="small text-secondary">{{getString1(239)}}</div>
+				<div class="fw-semibold mt-2" id="nm-preview"></div>
+			</div>
+			<div class="modal-footer border-0">
+				<button type="button" class="btn btn-soft" data-bs-dismiss="modal">{{getString1(230)}}</button>
+				<button type="button" class="btn btn-grad" id="nm-ok"><i class="bi bi-download"></i> {{getString1(127)}}</button>
+			</div>
+		</div>
+	</div>
+</div>
 
 <script>
-function startDownload(url, $btn){
+function startDownload(url, $btn, name = {}){
 	$.post('/download', {
 		song_url: url,
 		song_added_by: currentUser,
+		...name,
 		...($('#opt-enqueue').is(':checked') ? {enqueue: 'on'} : {}),
 		...($('#opt-hq').is(':checked') ? {high_quality: 'on'} : {}),
 		...($('#opt-subs').is(':checked') ? {include_subtitles: 'on'} : {}),
 	}, (msg) => showNotification(msg, 'is-info', 5000), 'text');
 	$btn.addClass('loading').prop('disabled', true);
 }
-$('.btn-dl').click(function(){ startDownload($(this).data('url'), $(this)); });
+
+// download dialog: singer chips toggle in/out of the singers box (several singers joined by ' & '),
+// a title chip replaces the title box; both boxes can also be typed into
+var nmBtn;
+var splitSingers = s => s.split(/\s*(?:&|、|，|,|\/)\s*/).filter(x => x);	// var, not const: this pane's script re-runs on every visit
+var chipsHTML = list => list.map(c => `<a class="chip">${esc(c)}</a>`).join('');
+function nmRender(){
+	var singers = splitSingers($('#nm-singers').val()), title = $('#nm-title').val().trim();
+	$('#nm-singer-chips .chip').each(function(){ $(this).toggleClass('active', singers.includes($(this).text())); });
+	$('#nm-title-chips .chip').each(function(){ $(this).toggleClass('active', $(this).text() == title); });
+	$('#nm-preview').text(singers.length ? `${singers.join(' & ')} - ${title}` : title);
+	$('#nm-ok').prop('disabled', !title);
+}
+$('.btn-dl').click(function(){
+	nmBtn = $(this);
+	var n = nmBtn.data('name');
+	if (!n) return startDownload(nmBtn.data('url'), nmBtn);	// no suggestions (app not restarted yet): name it on the server
+	$('#nm-yt').text(nmBtn.data('title'));
+	$('#nm-singers').val(n.singers.join(' & '));
+	$('#nm-title').val(n.title);
+	$('#nm-singer-chips').html(chipsHTML(n.singer_chips));
+	$('#nm-title-chips').html(chipsHTML(n.title_chips));
+	nmRender();
+	bootstrap.Modal.getOrCreateInstance('#nameModal').show();
+});
+$('#nm-singer-chips').on('click', '.chip', function(){
+	var singers = splitSingers($('#nm-singers').val()), c = $(this).text();
+	$('#nm-singers').val((singers.includes(c) ? singers.filter(x => x != c) : singers.concat(c)).join(' & '));
+	nmRender();
+});
+$('#nm-title-chips').on('click', '.chip', function(){ $('#nm-title').val($(this).text()); nmRender(); });
+$('#nm-singers, #nm-title').on('input', nmRender);
+$('#nm-ok').click(function(){
+	bootstrap.Modal.getInstance('#nameModal').hide();
+	startDownload(nmBtn.data('url'), nmBtn, {singers: splitSingers($('#nm-singers').val()).join(' & '), title: $('#nm-title').val().trim()});
+});
 $('.download-direct').submit(function(){
 	startDownload($('#direct-download-url').val(), $('#direct-download-button'));
 	return false;
@@ -86,21 +160,34 @@ function doSearch(){
 	$("#search-link .spinner-border").prop('hidden', false);
 	post_switch("/f_search", {search_string: search_term, non_karaoke: $("#search-karaoke").is(":checked")});
 }
-function doQueue(){
-	$.post("/enqueue", {song: suggests[$('#search-box').val()], user: currentUser}).then((data) => {
-		var obj = JSON.parse(data);
-		if (obj.success)
-			showNotification("{{getString1(115)}}" + obj.song, "is-success")
-		else
-			showNotification("{{getString1(116)}}" + obj.song, "is-danger")
-	});
-}
 $('#search-link').click(doSearch);
-$('#add-queue-link').click(doQueue);
 $('#search-box').on('keydown', function(e){
 	if(e.key != 'Enter') return;
 	e.preventDefault();
-	if(suggests && this.value in suggests) doQueue(); else doSearch();
+	doSearch();
+});
+function showTab(pane){
+	$('#result-tabs .btn').each(function(){ $(this).toggleClass('active', $(this).data('pane') == pane); });
+	$('#pane-local, #pane-yt').addClass('d-none');
+	$(pane).removeClass('d-none');
+}
+$('#result-tabs .btn').click(function(){
+	var pane = $(this).data('pane');
+	// YouTube tab searches right away, unless its results are already for this query
+	if(pane == '#pane-yt' && $('#search-box').val() && $('#search-box').val() != {{ (search_string or '')|tojson }}) return doSearch();
+	showTab(pane);
+});
+showTab('{{ "#pane-yt" if search_results else "#pane-local" }}');
+$('#lib-list').on('click', '.add-song-link', function(){
+	var $btn = $(this);
+	$.post("/enqueue", {song: suggests[Object.keys(suggests)[$btn.data('idx')]], user: currentUser}).then((data) => {
+		var obj = JSON.parse(data);
+		if (obj.success){
+			showNotification("{{getString1(115)}}" + obj.song, "is-success");
+			$btn.find('.bi').removeClass('bi-plus-lg').addClass('bi-check-lg');
+		} else
+			showNotification("{{getString1(116)}}" + obj.song, "is-danger");
+	});
 });
 
 function countChars(s){
@@ -110,17 +197,23 @@ function countChars(s){
 	return sum;
 }
 var old_text, suggests;
+var MAX_LIB_MATCHES = 50;
 function set_suggests(obj){
 	suggests = obj;
-	var html = '';
-	for(var i of Object.keys(obj))
-		html += `<option value="${esc(i)}">`;
-	$('#suggestions').html(html);
-	updateQueueButton();
+	var names = Object.keys(obj);
+	var html = '', i = 0;
+	for(var name of names.slice(0, MAX_LIB_MATCHES))
+		html += `<div class="list-group-item d-flex align-items-center gap-3">
+			<div class="flex-grow-1 text-truncate-2">${esc(name)}</div>
+			<button class="btn btn-sm btn-grad btn-round flex-none add-song-link" data-idx="${i++}"><i class="bi bi-plus-lg"></i></button>
+		</div>`;
+	$('#lib-list').html(html);
+	$('#lib-count').text(names.length > MAX_LIB_MATCHES ? `· ${MAX_LIB_MATCHES} / ${names.length}` : `· ${names.length}`);
 }
-function updateQueueButton(){
-	var matched = suggests!=null && $('#search-box').val() in suggests;
-	$('#add-queue-link').prop('hidden', !matched);
+function clear_suggests(){
+	suggests = null;
+	$('#lib-list').empty();
+	$('#lib-count').text('');
 }
 function searchASR(){
 	var blob = new Blob(audios, { type: "audio/webm" });
@@ -128,20 +221,27 @@ function searchASR(){
 	req.open("POST", '/get_ASR', true);
 	req.onload = (e)=>{
 		$('#search-box').val(e.target.responseText);
+		showTab('#pane-local');
 		$('#search-box').trigger('input');
 		$('#search-box').focus();
 	};
 	req.send(blob);
 }
 $('#search-box').on('input', (ev) => {
+	if(ev.originalEvent) showTab('#pane-local');	// typing a new query: show library matches
 	if(ev.target.value!=old_text && countChars(ev.target.value)>=4){
 		old_text = ev.target.value;
 		$.get('/suggest?q='+encodeURIComponent(ev.target.value)).then((data) => { set_suggests(JSON.parse(data)); });
+	} else if(countChars(ev.target.value)<4){
+		old_text = null;
+		clear_suggests();
 	}
-	updateQueueButton();
 });
 if(old_text && !$('#search-box').val()){
 	$('#search-box').val(old_text);
 	if(suggests) set_suggests(suggests);
+} else if($('#search-box').val()){
+	old_text = null;
+	$('#search-box').trigger('input');
 }
 </script>
