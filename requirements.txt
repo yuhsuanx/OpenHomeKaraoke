@@ -28,3 +28,4 @@ spec_utils
 pip
 opencc-python-reimplemented
 stable-ts
+ocrmac; sys_platform == "darwin"

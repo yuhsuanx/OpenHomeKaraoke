@@ -35,7 +35,7 @@ class MPVClient:
 			'--no-input-default-bindings', '--osc=no', '--osd-level=0',	# like VLC --no-keyboard-events/--no-mouse-events
 			'--sub-auto=no', '--audio-file-auto=no',
 			'--volume-max=200',	# VLC's web UI volume goes up to 512 = 200%
-			'--hwdec=auto-safe',
+			'--hwdec=videotoolbox-copy',	# hardware decode, but copy frames out: handing AV1 frames straight to Vulkan (auto-safe) lost the GPU (VK_ERROR_DEVICE_LOST)
 			'--title=pikaraoke',
 			'--quiet',	# no status line spam in the app's console
 		]

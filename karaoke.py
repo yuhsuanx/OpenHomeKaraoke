@@ -425,7 +425,8 @@ class Karaoke:
 			logging.debug("Rendering next song to splash screen")
 			r = song_block('UP NEXT  ·  下一首', self.queue[0]["title"], self.queue[0]["user"], y)
 			if self.preparing:
-				msg = {'vocals': '分離人聲中  Splitting vocals…', 'lyrics': '歌詞對時中  Timing lyrics…'}[self.preparing]
+				msg = {'vocals': '分離人聲中  Splitting vocals…', 'lyrics': '歌詞對時中  Timing lyrics…',
+				       'nolyrics': '找不到歌詞  No lyrics found'}[self.preparing]
 				self.splash_text('medium', 30, msg, C['text'], (x + n(58), r.bottom + n(92)), 'midleft', max_w, pill=True)
 		elif not self.firstSongStarted:
 			r = self.splash_text('medium', 28, 'LIBRARY  ·  歌曲庫', C['accent'], (x, y), max_w=max_w)
@@ -526,7 +527,7 @@ class Karaoke:
 			return ret_stdout.getvalue()
 		return ret_code
 
-	def get_search_results(self, textToSearch):
+	def get_search_results(self, textToSearch, retry=True):
 		logging.info("Searching YouTube for: " + textToSearch)
 		num_results = 10
 		yt_search = 'ytsearch%d:%s' % (num_results, textToSearch)
@@ -542,7 +543,9 @@ class Karaoke:
 					j = json.loads(each)
 					if (not "title" in j) or (not "url" in j) or not j.get("duration"):	# no duration: a channel/playlist (or live stream), not a song
 						continue
-					rc.append([j["title"], j["url"], j["id"], sec2hhmmss(j["duration"])])
+					rc.append([j["title"], j["url"], j["id"], sec2hhmmss(j["duration"]), name_suggestions(j["title"], j.get("channel"))])
+			if not rc and retry:	# YouTube hides results of queries it finds mature ('理想混蛋': 混蛋 = bastard) unless signed in; ' 歌' makes it a music query
+				return self.get_search_results(textToSearch + ' 歌', retry=False)
 			return rc
 		except Exception as e:
 			logging.debug("Error while executing search: " + str(e))
@@ -572,12 +575,14 @@ class Karaoke:
 		filename = f"{info_json['title']}---{info_json['id']}.{info_json['ext']}"
 		return filename if os.path.isfile(self.download_path+'tmp/'+filename) else None
 
-	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False):
+	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False,
+	                   singers = '', title = ''):
+		"""singers ('那英 & 王菲') and title: the name picked in the search page's download dialog; parsed from the YouTube title if not given."""
 		logging.info("Downloading video: " + song_url)
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
 		dl_path = "%(title)s---%(id)s.%(ext)s"
-		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a']
+		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a', '-S', 'res:1080,vcodec:h264']	# not 4K/AV1: 3x the size, slow to decode
 		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
 		cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4'] + self.cookies_opt + opt_quality +\
 		      ["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
@@ -596,7 +601,8 @@ class Karaoke:
 				m = ID_RE.search(bn)	# '<YouTube title>---<id>.<ext>'
 				if m:
 					stem = bn[:m.start()]
-					new_bn = Try(lambda: normalize_song_name(stem), stem) + bn[m.start():]
+					picked = re.sub(r'[/\\:*?"<>|\x00-\x1f]+', ' ', f'{singers} - {title}' if singers.strip() else title).strip()	# no path characters
+					new_bn = (picked if title.strip() else Try(lambda: normalize_song_name(stem), stem)) + bn[m.start():]
 					self.catalog.yt_titles[m.group(1)] = stem	# stored in the catalog by get_available_songs() below
 				else:
 					new_bn = bn
@@ -1501,6 +1507,10 @@ class Karaoke:
 								(self.song_ready(self.queue[0]['file']) and time.time()-tm < self.prepare_timeout)):
 							self.preparing = self.song_ready(self.queue[0]['file'])
 							self.handle_run_loop()
+						if self.queue and os.path.basename(self.queue[0]['file']) in self.lyrics_failed:	# tell the room it plays without lyrics
+							self.preparing, tm = 'nolyrics', time.time()
+							while self.running and self.queue and time.time() - tm < 4:
+								self.handle_run_loop()
 						self.preparing = ''
 						if not self.queue:
 							continue

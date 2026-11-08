@@ -26,8 +26,8 @@ def normalize_song_name(title):
 	m = re.search(r'〈(.+?)〉', title) or re.search(r'[《「『](.+?)[》」』]', title)
 	if m:
 		artist, song = title[:m.start()], m.group(1)
-	elif ' - ' in title:
-		artist, song = title.split(' - ', 1)
+	elif m := re.search(r'\s[-–—]\s', title):	# 'A - B', also with an en/em dash: '梁文音Wen Yin Liang – 分手後不要做朋友'
+		artist, song = title[:m.start()], title[m.end():]
 	elif len(parts := re.split(r'(?<=[㐀-鿿])-|-(?=[㐀-鿿])', title)) > 1:	# '李玖哲Nicky Lee-想太多Think Too Much-完整版MV', not 'A-Lin'
 		artist, song = parts[0], parts[1]
 	elif m := next((b for b in re.finditer(r'【([^】]+)】', title) if clean(b.group(1))), None):	# '藍又時Shadya Lan【倫敦的愛情】Official MV'
@@ -36,6 +36,36 @@ def normalize_song_name(title):
 		return title
 	artist, song = clean(artist), clean(song)
 	return S2T.convert(f'{artist} - {song}') if artist and song else title
+
+NAME_SEP = re.compile(r'[【】\[\]［］「」『』《》〈〉()（）｜|/♪~～:：,，、!！?？#＃+]+|\s+[-─—–]+\s+|(?<=[㐀-鿿])[-─—–]|[-─—–](?=[㐀-鿿])')
+NAME_TOKEN = re.compile(r'[0-9]*[㐀-鿿][㐀-鿿0-9]*|[^\s㐀-鿿](?:[^㐀-鿿]*[^\s㐀-鿿])?')	# a Chinese run ('2002年的第一場雪'), or a Latin run with its spaces ('Jay Chou')
+NAME_NOISE = re.compile(TITLE_NOISE.pattern + r'|高音質|完整版|純享版|劇情版|官方版|片尾|片頭|主題曲|插曲|電視劇|電影|原創|影集|ENG SUB|Pinyin|avex|Topic|VEVO|Channel', re.I)
+SINGER_SEP = re.compile(r'\s*(?:&|、|，|,|/)\s*')	# same as lib.catalog: '那英 & 王菲'
+
+def name_chunks(text):
+	"""Pieces of a YouTube title or channel name that could be a singer or song name, noise words dropped:
+	'Della丁噹【手掌心】MV官方版-中視古裝大戲[蘭陵王]片尾曲' -> ['Della', '丁噹', '手掌心', '中視古裝大戲', '蘭陵王']."""
+	out = []
+	for part in NAME_SEP.split(text or ''):
+		for tok in NAME_TOKEN.findall(part):
+			name = re.sub(r'\s+', ' ', NAME_NOISE.sub(' ', tok)).strip(' .-_')
+			if name and (name == tok or len(name) > 1) and S2T.convert(name) not in out:	# '官方版' -> '版': drop the leftover
+				out.append(S2T.convert(name))
+	return out
+
+def name_suggestions(yt_title, channel=''):
+	"""Best-guess singers and song title for a YouTube video, plus pieces of its title and channel name to
+	pick from instead (shown in the search page's download dialog)."""
+	name, chunks, from_channel = normalize_song_name(yt_title), name_chunks(yt_title), name_chunks(channel)
+	if ' - ' in name:	# parsed (the result may equal the title: 'Justin Bieber - Baby ft. Ludacris')
+		artist, title = name.split(' - ', 1)
+		singers = [s for s in SINGER_SEP.split(artist) if s]
+	else:	# the title names no singer ('離歌'): the channel ('信樂團 Shin Band') usually does
+		singers = from_channel[:1]
+		title = next((c for c in chunks if c not in singers), S2T.convert(yt_title))
+	dedupe = lambda xs: list(dict.fromkeys(xs))[:12]
+	return {'singers': singers, 'title': title,
+	        'singer_chips': dedupe(singers + from_channel + chunks), 'title_chips': dedupe([title] + chunks)}
 filelist, cookies_opt = [], []
 downloading_songs = {}
 to_pinyin = lambda t: pinyin.get(t, format='numerical')
