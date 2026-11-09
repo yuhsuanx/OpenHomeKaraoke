@@ -206,7 +206,8 @@ def nowplaying(return_json=True):
 			"audio_delay": s['audiodelay'],
 			"vol_norm": K.normalize_vol,
 			"play_speed": s['rate'],
-			"vocal_info": K.get_vocal_info()
+			"vocal_info": K.get_vocal_info(),
+			"has_chorus": bool(K.chorus())
 		}
 		if K.has_subtitle:
 			rc['subtitle_delay'] = s['subtitledelay']
@@ -422,6 +423,18 @@ def play_speed(speed):
 @app.route("/seek/<goto_sec>", methods = ["GET"])
 def seek(goto_sec):
 	K.seek(goto_sec)
+	return ''
+
+
+@app.route("/seek_chorus")
+def seek_chorus():
+	K.seek_chorus()
+	return ''
+
+
+@app.route("/seek_by/<delta_sec>", methods = ["GET"])
+def seek_by(delta_sec):
+	K.seek_by(delta_sec)
 	return ''
 
 

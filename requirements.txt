@@ -5,7 +5,7 @@ unidecode
 pykakasi
 pinyin
 pydub
-yt-dlp
+yt-dlp[default]	# [default] adds yt-dlp-ejs, the solver for YouTube's JS challenges (without it some videos are "not available")
 tempora==1.14.0
 jaraco.functools==2.0
 six

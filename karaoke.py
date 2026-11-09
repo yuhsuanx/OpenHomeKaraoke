@@ -17,6 +17,7 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient, mpvclient
 from lib.lyrics import make_lyrics
+from lib.chorus import find_chorus
 from lib.catalog import Catalog, ID_RE
 from lib.get_platform import *
 from lib.NLP import *
@@ -274,6 +275,8 @@ class Karaoke:
 				import pip
 				pip.main(['install', 'yt-dlp', '-U'])
 				cleanse_modules('yt_dlp')
+				import urllib3.util.url as u	# undo yt-dlp's urllib3 patch, or the re-import wraps it twice (requests fails: "no attribute 'sub'")
+				u._PERCENT_RE = getattr(u._PERCENT_RE, 're', u._PERCENT_RE)
 				import yt_dlp
 			except:
 				pass
@@ -582,7 +585,7 @@ class Karaoke:
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
 		dl_path = "%(title)s---%(id)s.%(ext)s"
-		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a', '-S', 'res:1080,vcodec:h264']	# not 4K/AV1: 3x the size, slow to decode
+		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'bv*+ba/b', '-S', 'res:1080,vcodec:h264,acodec:aac']	# not 4K/AV1: 3x the size, slow to decode ('-f mp4' would mean a pre-merged mp4: usually 360p)
 		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
 		cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4'] + self.cookies_opt + opt_quality +\
 		      ["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
@@ -1004,6 +1007,29 @@ class Karaoke:
 			return True
 		logging.warning("Tried to seek, but no file is playing!")
 		return False
+
+	def chorus(self):
+		"""Start times of the now-playing song's choruses (from its lyrics), [] if unknown."""
+		return find_chorus(self.lyrics_path(self.now_playing_filename)) if self.now_playing_filename else []
+
+	def seek_chorus(self):
+		"""Jump to just before the next chorus, or back to the first one after the last."""
+		times = self.chorus()
+		if not (times and self.is_file_playing() and self.use_vlc):
+			return False
+		info = self.vlcclient.get_info_xml()
+		now = info.get('position', 0) * info.get('length', 0)
+		return self.seek(max(next((t for t in times if t > now + 3), times[0]) - 2, 0))
+
+	def seek_by(self, delta_sec):
+		"""Jump delta_sec seconds forward (or back, if negative) from the current position."""
+		if not (self.is_file_playing() and self.use_vlc):
+			return False
+		info = self.vlcclient.get_info_xml()
+		if not info.get('length'):
+			return False
+		pos = info['position'] * info['length'] + float(delta_sec)
+		return self.seek(min(max(pos, 0), info['length'] - 1))
 
 	def set_delays_dict(self, filename, key, val, dft_val=0):
 		basename = os.path.basename(filename)

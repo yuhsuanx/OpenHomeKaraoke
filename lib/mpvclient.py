@@ -6,7 +6,7 @@ Duck-types the VLCClient calls karaoke.py shares between players (stop/seek/paus
 is_running/is_playing/get_info_xml/is_transposing), plus live setters VLC can't do without a restart:
 audio track (select_audio), subtitle visibility, delays, speed, transpose and fullscreen.
 Volume is kept on VLC's scale (256 = 100%) so the web UI is unchanged."""
-import os, json, time, socket, shutil, logging, subprocess, threading
+import os, sys, json, time, socket, shutil, logging, subprocess, threading
 
 VLC_100 = 256	# VLC HTTP volume for 100%
 
@@ -45,6 +45,8 @@ class MPVClient:
 		self.process = None
 		self.is_transposing = False	# True while (re)starting, so get_state() returns the cached state
 		self.lock = threading.Lock()
+		self.last_play = None	# (file, options, audio_files) of the last play_file(), to resume it after a GPU loss
+		self.recovering = False	# True while mpv is reopened after a GPU loss, so alive() stays True
 
 	# ---- IPC ----
 	def _request(self, *commands, timeout=2):
@@ -92,7 +94,8 @@ class MPVClient:
 			os.remove(self.sock_path)
 		command = self.cmd_base + (['--fs', '--ontop'] if fullscreen else [])
 		logging.info(f'mpv command: {command}')
-		self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL)
+		self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		threading.Thread(target=self._watch_output, args=(self.process,), daemon=True).start()
 		t0 = time.time()
 		while self.alive() and self.command('get_property', 'pid') is None and time.time() - t0 < 10:
 			time.sleep(0.05)
@@ -103,7 +106,51 @@ class MPVClient:
 
 	def alive(self):
 		"""mpv process (the window) is open."""
-		return self.process is not None and self.process.poll() is None
+		return self.recovering or (self.process is not None and self.process.poll() is None)
+
+	def _watch_output(self, process):
+		"""Pass mpv's console output through. If it loses the GPU (VK_ERROR_DEVICE_LOST, the window stays frozen
+		for good), reopen mpv and resume the song where it was."""
+		lost = False
+		for line in process.stdout:
+			sys.stdout.buffer.write(line)
+			sys.stdout.flush()
+			if not lost and b'VK_ERROR_DEVICE_LOST' in line:
+				lost = True
+				threading.Thread(target=self._recover).start()
+
+	def _recover(self):
+		logging.warning('mpv lost the GPU (VK_ERROR_DEVICE_LOST): reopening it and resuming the song')
+		with self.lock:
+			self.is_transposing = True	# the song counts as playing meanwhile
+			try:
+				names = ['path', 'time-pos', 'pause', 'fullscreen', 'track-list', 'volume', 'af', 'speed',
+				         'audio-delay', 'sub-delay', 'sub-visibility']
+				state = dict(zip(names, self.get(*names)))
+				audio = [t.get('external-filename', '') for t in state.pop('track-list') or [] if t['type'] == 'audio' and t.get('selected')]
+				path, pos, fs = state.pop('path'), state.pop('time-pos'), state.pop('fullscreen')
+				self.recovering = True
+				self.kill()
+				self.start(bool(fs))
+				self.recovering = False
+				self.overlay_key, self.image_keys = None, {}	# the new window has no overlays; karaoke.py re-adds them
+				if not path or not self.last_play or self.last_play[0] != path:
+					return
+				_, options, audio_files = self.last_play
+				self.set_property('pause', True)
+				if not self._loadfile(path, list(options) + [('start', pos or 0)]):
+					return
+				for f in audio_files:
+					self.command('audio-add', f, 'auto')
+				self.select_audio(audio[0] if audio else '')
+				for k, v in state.items():
+					if v is not None and k != 'pause':
+						self.set_property(k, v)
+				self.set_property('pause', bool(state['pause']))
+			except Exception as e:
+				logging.error(f'mpv recovery failed: {e}')
+			finally:
+				self.recovering = self.is_transposing = False
 
 	def show_overlay(self, bgra, w, h, dw, dh):
 		"""Show a w x h BGRA image (opaque) scaled to dw x dh over the whole window; no-op if unchanged."""
@@ -180,6 +227,7 @@ class MPVClient:
 				if volume:
 					self.vol_set(volume)
 				logging.info(f'mpv loadfile {file_path} {options}')
+				self.last_play = (file_path, options, audio_files)
 				if not self._loadfile(file_path, options):
 					return None
 				for f in audio_files:	# loadfile keeps only the last of repeated audio-files-append options

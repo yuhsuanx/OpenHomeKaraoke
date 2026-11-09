@@ -163,9 +163,17 @@ def similar(a, b):
 	return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
 
 def ocr(path):
-	"""[(text, top, bottom)] read from an image, top/bottom as fractions of its height from the top."""
+	"""[(text, top, bottom)] per row of text read from an image, top/bottom as fractions of its height from the top.
+	Boxes on one row are joined left to right: Vision often splits a line ('傻裡傻氣地在 | 個今天的 | 夢想中醒來')."""
 	res = ocrmac.OCR(Image.open(path), language_preference=['zh-Hant'], recognition_level='accurate').recognize()
-	return [(S2T.convert(t), 1 - (y + h), 1 - y) for t, conf, (x, y, w, h) in res if conf >= 0.3]	# Vision's origin is bottom-left
+	rows = []
+	for t, a, b, x in sorted(((S2T.convert(t), 1 - (y + h), 1 - y, x) for t, conf, (x, y, w, h) in res if conf >= 0.3), key=lambda r: r[1]):	# Vision's origin is bottom-left
+		if rows and min(b, rows[-1][2]) - max(a, rows[-1][1]) > 0.5 * min(b - a, rows[-1][2] - rows[-1][1]):	# overlaps the row above vertically
+			rows[-1][0].append((x, t))
+			rows[-1][1:] = min(a, rows[-1][1]), max(b, rows[-1][2])
+		else:
+			rows.append([[(x, t)], a, b])
+	return [(' '.join(t for _, t in sorted(parts)), a, b) for parts, a, b in rows]
 
 def video_frames(video, vf, tmp):
 	for f in os.listdir(tmp):
@@ -256,13 +264,14 @@ def ocr_windows(video, dur, lines, times):
 def screen_words(line, pairs, scr, segs):
 	"""line with the words the MV shows but LRCLIB's copy lacks, e.g. '傻裡傻氣地在夢想中醒來' as sung and shown:
 	'傻裡傻氣地在每一個今天的夢想中醒來'. pairs: (token in line, index into scr) matches, in order. Only pure insertions
-	of Chinese characters between two matched neighbours, read the same in 2+ frames, are taken; where the screen
+	of Chinese characters between two matched neighbours in the same shown text, read the same in 2+ frames, are
+	taken (neighbours matched in different texts span re-reads of the line: '醒來' + '中醒來'); where the screen
 	differs (an OCR misreading like 醒 -> 醛) LRCLIB's character is kept."""
 	spans = [m.span() for m in TOK.finditer(line)]
 	adds = []
 	for (k1, b1), (k2, b2) in zip(pairs, pairs[1:]):
 		gap = scr[b1 + 1:b2]
-		if k2 == k1 + 1 and 0 < len(gap) <= 8 and all(HAN.fullmatch(t) and segs[s][3] >= 2 for s, t in gap):
+		if k2 == k1 + 1 and scr[b1][0] == scr[b2][0] and 0 < len(gap) <= 8 and all(HAN.fullmatch(t) and segs[s][3] >= 2 for s, t in gap):	# within one shown text
 			adds.append((spans[k1][1], ''.join(t for _, t in gap)))
 	for pos, text in reversed(adds):
 		line = line[:pos] + text + line[pos:]
