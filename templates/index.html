@@ -277,9 +277,18 @@ function open_wsock_if_nec(){
 	if(ws==null || ws.readyState>1){
 		ws = new WebSocket((window.location.href.startsWith('https:')?'wss://':'ws://') + location.host + '/ws_init');
 		ws.addEventListener('message', ev => {setTimeout(ev.data, 1);});
+		ws.addEventListener('close', () => {if(!document.hidden) setTimeout(open_wsock_if_nec, 2000);});
 	}
 	return ws;
 }
+// Phones drop the socket while asleep/backgrounded: reconnect and reload the live pane on return
+function resync(){
+	if(document.hidden) return;
+	open_wsock_if_nec();
+	if(/(home|queue)$/.test(last_pane)) switch_pane(last_pane);
+}
+document.addEventListener('visibilitychange', resync);
+window.addEventListener('pageshow', ev => {if(ev.persisted) resync();});
 
 // Songs recognised from speech
 var titles, files;

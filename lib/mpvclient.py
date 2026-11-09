@@ -113,8 +113,11 @@ class MPVClient:
 		for good), reopen mpv and resume the song where it was."""
 		lost = False
 		for line in process.stdout:
-			sys.stdout.buffer.write(line)
-			sys.stdout.flush()
+			try:
+				sys.stdout.buffer.write(line)
+				sys.stdout.flush()
+			except Exception:	# keep draining: if this thread dies, mpv blocks on the full pipe and stops answering IPC
+				pass
 			if not lost and b'VK_ERROR_DEVICE_LOST' in line:
 				lost = True
 				threading.Thread(target=self._recover).start()

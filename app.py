@@ -46,7 +46,14 @@ def ws_init(sock):
 			wscmd(key, cmd)
 		except:
 			traceback.print_exc()
-	ip2websock.pop(key)
+	if ip2websock.get(key) is sock:	# a reconnect from the same IP may have replaced it
+		ip2websock.pop(key)
+
+def ws_send(ws, msg):
+	try:
+		ws.send(msg)
+	except Exception:
+		pass
 
 def wscmd(client_ip, cmd):
 	if cmd.startswith('pop_from_queue '):
@@ -78,16 +85,16 @@ def status_thread():
 			tm = K.get_state().get('time', None)
 			if tm is None:
 				continue
-			for ip, ws in ip2websock.items():
+			for ip, ws in list(ip2websock.items()):
 				if ip2pane.get(ip, '') == 'home':
-					ws.send(f"seektrack.value={tm};$('#seektrack-val').text(getHHMMSS({tm}));")
+					ws_send(ws, f"seektrack.value={tm};$('#seektrack-val').text(getHHMMSS({tm}));")
 			continue
 
-		for ip, ws in ip2websock.items():
+		for ip, ws in list(ip2websock.items()):
 			if ip2pane.get(ip, '') == 'home':
-				ws.send(f"update('{status_full}')")
+				ws_send(ws, f"update('{status_full}')")
 			elif ip2pane.get(ip, '') == 'queue':
-				ws.send(f"update('{K.queue_json}')")
+				ws_send(ws, f"update('{K.queue_json}')")
 		K.status_dirty = False
 
 # Define global symbols for Jinja templates 
