@@ -479,7 +479,7 @@ class Karaoke:
 		for size in sizes:
 			if size not in self.fonts:
 				self.fonts[size] = [pygame.freetype.SysFont(pygame.freetype.get_default_font(), size)] \
-						+ [pygame.freetype.Font(f'font/{name}', size) for name in ['arial-unicode-ms.ttf', 'unifont.ttf']]
+						+ [pygame.freetype.Font(f'font/{name}', size) for name in ['NotoSansTC-Regular.otf', 'unifont.ttf']]
 
 		# find a font that contains all characters of the song title, if cannot find, then display transliteration instead
 		found = None

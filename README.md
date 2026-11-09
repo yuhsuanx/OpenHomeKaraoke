@@ -182,6 +182,7 @@ The `---<YouTubeID>` suffix is kept in file names and hidden in the UI.
 - [mpv](https://mpv.io), [VLC](https://www.videolan.org), [FFmpeg](https://ffmpeg.org), [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [Bootstrap](https://getbootstrap.com) and Bootstrap Icons, [SortableJS](https://github.com/SortableJS/Sortable)
 - [OpenCC](https://github.com/BYVoid/OpenCC), [ocrmac](https://github.com/straussmaximilian/ocrmac), [PyTorch](https://pytorch.org)
+- [Noto Sans TC](https://github.com/notofonts/noto-cjk) (SIL Open Font License, see `font/NotoSansTC-LICENSE.txt`) and [GNU Unifont](https://unifoundry.com/unifont/) for the splash screen fallback fonts
 
 ## License
 
