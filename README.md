@@ -2,6 +2,26 @@
 
 A Mac-first home KTV for Mandarin songs: play karaoke videos from YouTube, remove vocals with a neural network, show KTV-style synced lyrics, and let everyone queue songs from their phone.
 
+## Requirements & install
+
+- Python 3.13 and [uv](https://docs.astral.sh/uv/)
+- ffmpeg / ffprobe
+- mpv (recommended) or VLC
+
+```bash
+brew install mpv ffmpeg
+brew install --cask vlc          # only if you use the VLC player
+
+git clone https://github.com/yuhsuanx/OpenHomeKaraoke.git
+cd OpenHomeKaraoke
+make install                     # uv venv + uv pip install -r requirements.txt
+
+# Song folder. The vocal/ and nonvocal/ subfolders turn vocal splitting on.
+mkdir -p ~/pikaraoke-songs/{vocal,nonvocal}
+```
+
+The vocal-splitter model (`models/baseline.pth`) is included in the repo. Then start it with `make sing` (see [Running](#running)).
+
 ## About this fork
 
 This project started as [PiKaraoke](https://github.com/vicwomg/pikaraoke) by Vic Wong. Wang Xuancong turned it into [OpenHomeKaraoke](https://github.com/xuancong84/OpenHomeKaraoke), adding web sockets, speech recognition and tsurumeso's [DNN vocal remover](https://github.com/tsurumeso/vocal-remover). This fork (yuhsuanx, from November 2026) focuses on one setup: a Mac on a TV, Mandarin songs, phones as remotes. The full upstream git history is kept. Many thanks to both upstream authors.
@@ -69,27 +89,6 @@ Upstream features that are still in the code but untested in this fork: cloud vo
 | macOS, Apple Silicon | Tested |
 | Linux | Untested. The VLC path may work, without OCR or MPS. The mpv options used are macOS-specific. |
 | Windows, Raspberry Pi | Not supported in this fork. Use [upstream](https://github.com/xuancong84/OpenHomeKaraoke). |
-
-## Requirements & install
-
-- Python 3.13 and [uv](https://docs.astral.sh/uv/)
-- ffmpeg / ffprobe
-- mpv (recommended) or VLC
-
-```bash
-brew install mpv ffmpeg
-brew install --cask vlc          # only if you use the VLC player
-
-git clone https://github.com/yuhsuanx/OpenHomeKaraoke.git
-cd OpenHomeKaraoke
-uv venv
-uv pip install -r requirements.txt
-
-# Song folder. The vocal/ and nonvocal/ subfolders turn vocal splitting on.
-mkdir -p ~/pikaraoke-songs/{vocal,nonvocal}
-```
-
-The vocal-splitter model (`models/baseline.pth`) is included in the repo.
 
 ## Running
 

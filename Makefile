@@ -1,6 +1,11 @@
 SONGS := ~/pikaraoke-songs
 
-.PHONY: sing
+.PHONY: install sing
+
+# Create the venv (Python from .python-version) and install the Python requirements.
+install:
+	uv venv --allow-existing
+	uv pip install -r requirements.txt
 
 # App (mpv, QR code shown over videos) in the foreground, vocal splitter in the background; Ctrl+C stops both.
 sing:
