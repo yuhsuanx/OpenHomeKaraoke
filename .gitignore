@@ -6,3 +6,12 @@ songs/
 qrcode.png
 .DS_Store
 access.log*
+.venv/
+.claude/
+.yt-dlp.last-update
+.library.json
+.crop.json
+*.mp3_volume.json.gz
+*.mp4
+*.m4a
+cookies*.txt
